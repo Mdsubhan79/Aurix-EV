@@ -1,0 +1,235 @@
+/* =========================================================================
+   VoltLine — Responsive Stylesheet
+   Covers 260px (smallest real phones / split-screen) up to large desktop.
+   Import this file once, e.g. in main.jsx: import "./responsive.css";
+========================================================================= */
+
+:root {
+  --bg: #12151A;
+  --surface: #171B23;
+  --surface-2: #1E2430;
+  --line: #232833;
+  --line-soft: #2A2F3A;
+  --volt: #C4F135;
+  --volt-dim: #8FAE2A;
+  --text: #F2F3F0;
+  --muted: #8B93A1;
+  --muted-2: #5A616F;
+
+  /* fluid spacing/type scales — clamp(min, preferred, max) */
+  --space-xs: clamp(4px, 1vw, 6px);
+  --space-sm: clamp(8px, 2vw, 12px);
+  --space-md: clamp(12px, 3vw, 18px);
+  --space-lg: clamp(16px, 4vw, 24px);
+  --space-xl: clamp(20px, 5vw, 32px);
+
+  --text-xs: clamp(10px, 2.4vw, 11.5px);
+  --text-sm: clamp(11.5px, 2.8vw, 13px);
+  --text-md: clamp(12.5px, 3.2vw, 14.5px);
+  --text-lg: clamp(15px, 4vw, 17px);
+  --text-xl: clamp(18px, 5.5vw, 22px);
+  --text-2xl: clamp(20px, 7vw, 26px);
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body, #root {
+  margin: 0;
+  min-width: 260px;       /* never collapse below this */
+  overflow-x: hidden;      /* no sideways scroll on tiny screens */
+  background: var(--bg);
+  color: var(--text);
+}
+
+img { max-width: 100%; display: block; }
+
+/* -------------------------------------------------------------------------
+   LAYOUT SHELL
+------------------------------------------------------------------------- */
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+  min-height: 100dvh; /* fixes mobile browser chrome jumping */
+}
+
+.sidebar { width: 224px; flex-shrink: 0; }
+
+.main-col {
+  flex: 1;
+  min-width: 0;           /* critical: lets flex children shrink below content size */
+  display: flex;
+  flex-direction: column;
+}
+
+.page-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-lg) clamp(10px, 4vw, 32px) 90px;
+}
+
+/* Hide sidebar / show bottom nav below 860px, react to resize (not just mount) */
+@media (min-width: 861px) {
+  .bottom-nav { display: none !important; }
+  .page-body { padding-bottom: var(--space-lg); }
+}
+@media (max-width: 860px) {
+  .sidebar { display: none !important; }
+}
+
+.bottom-nav {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: space-around;
+  padding: 6px 2px calc(env(safe-area-inset-bottom, 0px) + 6px);
+  z-index: 10;
+}
+.bottom-nav button {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-xs);
+  padding: 4px 2px;
+  gap: 2px;
+}
+.bottom-nav button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* -------------------------------------------------------------------------
+   TYPOGRAPHY — fluid, no fixed px sizes that break under 320px
+------------------------------------------------------------------------- */
+.page-title      { font-size: var(--text-xl); }
+.card-title      { font-size: var(--text-md); }
+.stat-value      { font-size: clamp(16px, 5vw, 22px); }
+.brand-title     { font-size: clamp(14px, 4vw, 16px); }
+
+/* -------------------------------------------------------------------------
+   GRIDS — collapse gracefully, never force horizontal scroll
+------------------------------------------------------------------------- */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr));
+  gap: var(--space-sm);
+}
+/* On very narrow screens (below ~340px) force a strict 2-column grid
+   so cards never squeeze under ~120px wide */
+@media (max-width: 340px) {
+  .stat-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+.catalogue-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
+  gap: var(--space-md);
+}
+
+.dashboard-split {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: var(--space-md);
+}
+@media (max-width: 760px) {
+  .dashboard-split { grid-template-columns: 1fr; }
+}
+
+.quick-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-sm);
+}
+@media (max-width: 420px) {
+  .quick-actions { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 280px) {
+  .quick-actions { grid-template-columns: 1fr; }
+}
+
+/* -------------------------------------------------------------------------
+   CARDS / BUTTONS / INPUTS — fluid padding, tap-friendly on small screens
+------------------------------------------------------------------------- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: var(--space-md);
+  min-width: 0;
+}
+
+.btn-primary, .btn-ghost {
+  padding: clamp(9px, 2.4vw, 11px) clamp(12px, 4vw, 18px);
+  font-size: var(--text-sm);
+  min-height: 40px;   /* keeps tap targets accessible on small screens */
+  white-space: nowrap;
+}
+
+.input, select.input, textarea.input {
+  font-size: 16px;    /* stops iOS Safari auto-zoom on focus */
+  padding: 10px 12px;
+  width: 100%;
+  min-width: 0;
+}
+
+/* Row of two fields side-by-side stacks on very narrow screens */
+.field-row { display: flex; gap: var(--space-sm); }
+@media (max-width: 360px) {
+  .field-row { flex-direction: column; }
+}
+
+/* -------------------------------------------------------------------------
+   TABLES — horizontal scroll container instead of squeezing/breaking
+------------------------------------------------------------------------- */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 calc(-1 * var(--space-md));
+  padding: 0 var(--space-md);
+}
+table.data-table { min-width: 560px; width: 100%; border-collapse: collapse; font-size: var(--text-xs); }
+
+/* -------------------------------------------------------------------------
+   MODALS — full-height sheet on phones, centered dialog on larger screens
+------------------------------------------------------------------------- */
+.modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(8,10,14,0.7);
+  display: flex; align-items: flex-end; justify-content: center;
+  z-index: 100;
+}
+.modal-panel {
+  width: 100%;
+  max-width: 460px;
+  max-height: 90dvh;
+  overflow-y: auto;
+  border-radius: 18px 18px 0 0;
+  padding: var(--space-lg);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-bottom: none;
+}
+.modal-panel.wide { max-width: 560px; }
+
+/* On screens tall/wide enough, center the modal like a dialog instead of a sheet */
+@media (min-width: 640px) and (min-height: 640px) {
+  .modal-backdrop { align-items: center; }
+  .modal-panel { border-radius: 18px; border-bottom: 1px solid var(--line); max-height: 85vh; }
+}
+
+/* -------------------------------------------------------------------------
+   ULTRA-SMALL SCREENS (260px–320px): tighten everything further
+------------------------------------------------------------------------- */
+@media (max-width: 320px) {
+  .page-body { padding-left: 8px; padding-right: 8px; }
+  .card { padding: 12px; border-radius: 12px; }
+  .modal-panel { padding: 14px; }
+  .row-line { font-size: 12px; }
+}
+
+/* -------------------------------------------------------------------------
+   LARGE SCREENS: cap content width so it doesn't stretch too thin/wide
+------------------------------------------------------------------------- */
+@media (min-width: 1440px) {
+  .page-body { max-width: 1280px; margin: 0 auto; width: 100%; }
+}
+
+
