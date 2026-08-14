@@ -1,3 +1,4 @@
+
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import axios from "axios";
 import { io } from "socket.io-client";
@@ -12,21 +13,18 @@ import {
 
 /* =========================================================================
    0. API CLIENT + SOCKET
-   Exported so other tab components (e.g. Billing.jsx) share the same
-   axios instance (same auth header logic) and the same live socket
-   connection instead of opening a second one.
 ========================================================================= */
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:5000/api";
 const SOCKET_URL = import.meta.env?.VITE_SOCKET_URL || "http://localhost:5000";
 
-export const api = axios.create({ baseURL: API_URL });
+const api = axios.create({ baseURL: API_URL });
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("voltline_token");
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
-export const socket = io(SOCKET_URL, { autoConnect: false });
+const socket = io(SOCKET_URL, { autoConnect: false });
 
 /* =========================================================================
    1. GLOBAL STYLE INJECTION 
@@ -58,12 +56,12 @@ function GlobalStyles() {
 }
 
 /* =========================================================================
-   2. UTIL HELPERS — exported for reuse by Billing.jsx
+   2. UTIL HELPERS
 ========================================================================= */
-export const inr = (n) => "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
-export const fmtDate = (d) => new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-export const todayISO = () => new Date().toISOString().slice(0, 10);
-export const RANGE_LABEL = { today: "Today", week: "This Week", month: "This Month", year: "This Year" };
+const inr = (n) => "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+const fmtDate = (d) => new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+const todayISO = () => new Date().toISOString().slice(0, 10);
+const RANGE_LABEL = { today: "Today", week: "This Week", month: "This Month", year: "This Year" };
 
 /* =========================================================================
    3. ROOT APP
@@ -74,6 +72,7 @@ export default function App() {
   const [business, setBusiness] = useState(null);
   const [tab, setTab] = useState("dashboard");
 
+  // bootstrap: check saved token
   useEffect(() => {
     const token = localStorage.getItem("voltline_token");
     if (!token) {
@@ -340,11 +339,11 @@ const NAV = [
 
 function AppShell({ owner, business, setBusiness, tab, setTab, onLogout }) {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 860);
-  useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth < 860);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
+useEffect(() => {
+  const onResize = () => setIsMobile(window.innerWidth < 860);
+  window.addEventListener("resize", onResize);
+  return () => window.removeEventListener("resize", onResize);
+}, []);
 
   return (
     <div style={{ minHeight: "100vh", background: "#12151A", color: "#F2F3F0", fontFamily: "'Inter',sans-serif", display: "flex" }}>
@@ -445,13 +444,11 @@ function Dashboard({ setTab }) {
   useEffect(() => {
     const refresh = () => load();
     socket.on("bill:created", refresh);
-    socket.on("bill:updated", refresh);
     socket.on("bill:deleted", refresh);
     socket.on("expense:created", refresh);
     socket.on("expense:deleted", refresh);
     return () => {
       socket.off("bill:created", refresh);
-      socket.off("bill:updated", refresh);
       socket.off("bill:deleted", refresh);
       socket.off("expense:created", refresh);
       socket.off("expense:deleted", refresh);
@@ -516,7 +513,7 @@ function QuickAction({ icon: Icon, label, onClick }) {
   );
 }
 
-export function RangeTabs({ range, setRange }) {
+function RangeTabs({ range, setRange }) {
   return (
     <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
       {Object.keys(RANGE_LABEL).map((r) => (
@@ -530,7 +527,7 @@ export function RangeTabs({ range, setRange }) {
   );
 }
 
-export function StatCard({ icon: Icon, label, value, accent, sub }) {
+function StatCard({ icon: Icon, label, value, accent, sub }) {
   return (
     <div style={S.card}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -543,7 +540,7 @@ export function StatCard({ icon: Icon, label, value, accent, sub }) {
   );
 }
 
-export function Empty({ text }) {
+function Empty({ text }) {
   return <div style={{ color: "#5A616F", fontSize: 13, padding: "18px 4px", textAlign: "center" }}>{text}</div>;
 }
 
@@ -556,7 +553,7 @@ function emptyScooter() {
 
 function Catalogue() {
   const [scooters, setScooters] = useState([]);
-  const [editing, setEditing] = useState(null);
+  const [editing, setEditing] = useState(null); // { id?, data, imageFile, imagePreview }
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -688,7 +685,15 @@ function ScooterModal({ editing, setEditing, onClose, onSave }) {
 }
 
 /* =========================================================================
-   11. SALES
+   10. BILLING
+========================================================================= */
+function emptyBill(business) {
+  return { date: todayISO(), customerName: "", customerPhone: "", location: "", type: "sale", serviceDesc: "", items: [], gstRate: business?.gstRate || 18, paymentMode: "Cash" };
+}
+
+
+/* =========================================================================
+   11. SALES —
 ========================================================================= */
 function Sales() {
   const [range, setRange] = useState("month");
@@ -707,9 +712,8 @@ function Sales() {
   useEffect(() => {
     const refresh = () => load();
     socket.on("bill:created", refresh);
-    socket.on("bill:updated", refresh);
     socket.on("bill:deleted", refresh);
-    return () => { socket.off("bill:created", refresh); socket.off("bill:updated", refresh); socket.off("bill:deleted", refresh); };
+    return () => { socket.off("bill:created", refresh); socket.off("bill:deleted", refresh); };
   }, [load]);
 
   const total = bills.reduce((s, b) => s + b.total, 0);
@@ -861,9 +865,6 @@ function Partners({ business }) {
   const [expenses, setExpenses] = useState([]);
   const [draft, setDraft] = useState(null);
   const [loading, setLoading] = useState(true);
-  // Reinvestment is set aside from net profit before splitting between partners.
-  // Kept per range in local state (not persisted) so it's easy to adjust before sharing.
-  const [reinvest, setReinvest] = useState({});
 
   const load = useCallback(() => {
     setLoading(true);
@@ -875,35 +876,29 @@ function Partners({ business }) {
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     const refresh = () => load();
-    ["partner:created", "partner:deleted", "bill:created", "bill:updated", "bill:deleted", "expense:created", "expense:deleted"].forEach((ev) => socket.on(ev, refresh));
-    return () => { ["partner:created", "partner:deleted", "bill:created", "bill:updated", "bill:deleted", "expense:created", "expense:deleted"].forEach((ev) => socket.off(ev, refresh)); };
+    ["partner:created", "partner:deleted", "bill:created", "bill:deleted", "expense:created", "expense:deleted"].forEach((ev) => socket.on(ev, refresh));
+    return () => { ["partner:created", "partner:deleted", "bill:created", "bill:deleted", "expense:created", "expense:deleted"].forEach((ev) => socket.off(ev, refresh)); };
   }, [load]);
 
   const sales = bills.reduce((s, b) => s + b.total, 0);
   const grossProfit = bills.reduce((s, b) => s + (b.items || []).reduce((x, it) => x + (it.sellingPrice - it.actualPrice) * it.qty, 0), 0);
   const expTotal = expenses.reduce((s, e) => s + Number(e.amount), 0);
   const netProfit = grossProfit - expTotal;
-  const reinvestAmount = Math.max(0, Number(reinvest[range] || 0));
-  const distributable = Math.max(0, netProfit - reinvestAmount);
 
   const save = async () => { await api.post("/partners", draft); setDraft(null); load(); };
   const remove = async (id) => { await api.delete(`/partners/${id}`); load(); };
 
   const shareToAll = () => {
     let msg = `*${business?.name || "Business"} — ${RANGE_LABEL[range]} Report*\n\n`;
-    msg += `Total Sales: ${inr(sales)}\nGross Profit: ${inr(grossProfit)}\nExpenses: ${inr(expTotal)}\nNet Profit: ${inr(netProfit)}\n`;
-    if (reinvestAmount > 0) msg += `Reinvestment set aside: ${inr(reinvestAmount)}\n`;
-    msg += `*Distributable Profit: ${inr(distributable)}*\n\n*Partner Shares:*\n`;
-    partners.forEach((p) => { msg += `${p.name} (${p.sharePercent}%): ${inr(distributable * (Number(p.sharePercent) || 0) / 100)}\n`; });
+    msg += `Total Sales: ${inr(sales)}\nGross Profit: ${inr(grossProfit)}\nExpenses: ${inr(expTotal)}\n*Net Profit: ${inr(netProfit)}*\n\n*Partner Shares:*\n`;
+    partners.forEach((p) => { msg += `${p.name} (${p.sharePercent}%): ${inr(netProfit * (Number(p.sharePercent) || 0) / 100)}\n`; });
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
   const shareToPartner = (p) => {
-    const share = distributable * (Number(p.sharePercent) || 0) / 100;
+    const share = netProfit * (Number(p.sharePercent) || 0) / 100;
     let msg = `Hi ${p.name}, here's the *${RANGE_LABEL[range]}* summary from ${business?.name || "us"}:\n\n`;
-    msg += `Total Sales: ${inr(sales)}\nGross Profit: ${inr(grossProfit)}\nExpenses: ${inr(expTotal)}\nNet Profit: ${inr(netProfit)}\n`;
-    if (reinvestAmount > 0) msg += `Reinvestment set aside: ${inr(reinvestAmount)}\n`;
-    msg += `Distributable Profit: ${inr(distributable)}\n\n*Your share (${p.sharePercent}%): ${inr(share)}*`;
+    msg += `Total Sales: ${inr(sales)}\nGross Profit: ${inr(grossProfit)}\nExpenses: ${inr(expTotal)}\nNet Profit: ${inr(netProfit)}\n\n*Your share (${p.sharePercent}%): ${inr(share)}*`;
     const phone = (p.phone || "").replace(/[^0-9]/g, "");
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, "_blank");
   };
@@ -925,28 +920,9 @@ function Partners({ business }) {
         <StatCard icon={ArrowUpRight} label="Net profit" value={inr(netProfit)} accent="#C4F135" />
       </div>
 
-      <div style={{ ...S.card, marginTop: 12 }}>
-        <div style={S.cardTitle}>Reinvestment</div>
-        <div style={{ color: "#8B93A1", fontSize: 12.5, marginBottom: 10 }}>
-          Set aside an amount from net profit for the business before splitting the rest between partners.
-        </div>
-        <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
-          <Field
-            label={`Reinvestment amount · ${RANGE_LABEL[range]}`}
-            value={String(reinvest[range] ?? "")}
-            onChange={(v) => setReinvest((r) => ({ ...r, [range]: v.replace(/[^0-9.]/g, "") }))}
-            placeholder="0"
-          />
-          <div style={{ paddingBottom: 10, fontSize: 13 }}>
-            <span style={{ color: "#8B93A1" }}>Distributable profit: </span>
-            <b style={{ fontFamily: "'JetBrains Mono',monospace", color: "#C4F135" }}>{inr(distributable)}</b>
-          </div>
-        </div>
-      </div>
-
       <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 8 }}>
         {loading ? <Empty text="Loading…" /> : partners.length === 0 ? <Empty text="No partners added yet." /> : partners.map((p) => {
-          const share = distributable * (Number(p.sharePercent) || 0) / 100;
+          const share = netProfit * (Number(p.sharePercent) || 0) / 100;
           return (
             <div key={p._id} style={{ ...S.card, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px" }}>
               <div>
@@ -1047,9 +1023,9 @@ function SettingsTab({ business, setBusiness }) {
 }
 
 /* =========================================================================
-   15. SHARED UI PRIMITIVES — exported for reuse by Billing.jsx
+   15. SHARED UI PRIMITIVES
 ========================================================================= */
-export function Field({ label, value, onChange, placeholder, textarea, type = "text" }) {
+function Field({ label, value, onChange, placeholder, textarea, type = "text" }) {
   return (
     <div style={S.field}>
       <label style={S.fieldLabel}>{label}</label>
@@ -1062,7 +1038,7 @@ export function Field({ label, value, onChange, placeholder, textarea, type = "t
   );
 }
 
-export function Modal({ title, onClose, children, wide }) {
+function Modal({ title, onClose, children, wide }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(8,10,14,0.7)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 100, backdropFilter: "blur(2px)" }} onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: "#171B23", borderRadius: "18px 18px 0 0", width: "100%", maxWidth: wide ? 560 : 460, maxHeight: "88vh", overflowY: "auto", padding: 22, border: "1px solid #232833", borderBottom: "none" }}>
@@ -1079,9 +1055,9 @@ export function Modal({ title, onClose, children, wide }) {
 }
 
 /* =========================================================================
-   16. STYLE TOKENS (design system — CSS-in-JS) — exported for Billing.jsx
+   16. STYLE TOKENS (design system — CSS-in-JS)
 ========================================================================= */
-export const S = {
+const S = {
   screen: { minHeight: "100vh", background: "#12151A", display: "flex", justifyContent: "center", fontFamily: "'Inter',sans-serif", color: "#F2F3F0" },
   centerScreen: { minHeight: "100vh", background: "#12151A", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter',sans-serif", color: "#F2F3F0", position: "relative", overflow: "hidden" },
   voltGlow: { position: "absolute", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle,rgba(196,241,53,0.08),transparent 70%)", top: "-10%", left: "-10%" },
