@@ -1,39 +1,3 @@
-/**
- * VoltLine — Electric Scooter Showroom Management
- * FULL BACKEND (single file)
- *
- * Stack: Node.js + Express + MongoDB (Mongoose) + Socket.io + Cloudinary + JWT
- *
- * SETUP
- * 1. npm init -y
- * 2. npm install express mongoose socket.io cloudinary multer multer-storage-cloudinary
- *               jsonwebtoken bcryptjs cors dotenv
- * 3. Create a .env file next to this file (see ENV VARS block below)
- * 4. node server.js
- *
- * On first boot, if no owner account exists yet, one is auto-created from your
- * OWNER_* env vars (so you don't need a separate seed script).
- *
- * ENV VARS (.env)
- * ----------------------------------------------------------------
- * PORT=5000
- * CLIENT_URL=http://localhost:5173
- *
- * MONGO_URI=mongodb://localhost:27017/voltline
- * # or MongoDB Atlas: mongodb+srv://<user>:<pass>@cluster0.mongodb.net/voltline
- *
- * JWT_SECRET=change_this_to_a_long_random_string
- * JWT_EXPIRES_IN=30d
- *
- * OWNER_NAME=MOHD SUBHAN
- * OWNER_EMAIL=mdsammlk00@gmail.com
- * OWNER_PASSWORD=changeme123
- *
- * CLOUDINARY_CLOUD_NAME=your_cloud_name
- * CLOUDINARY_API_KEY=your_api_key
- * CLOUDINARY_API_SECRET=your_api_secret
- * ----------------------------------------------------------------
- */
 
 require("dotenv").config();
 
@@ -47,7 +11,12 @@ const multer = require("multer");
 const { Server } = require("socket.io");
 const cloudinary = require("cloudinary").v2;
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const dns = require("dns");
 
+dns.setServers([
+  "8.8.8.8",
+  "1.1.1.1"
+]);
 /* =========================================================================
    1. CLOUDINARY CONFIG
 ========================================================================= */
@@ -133,21 +102,10 @@ const billItemSchema = new mongoose.Schema(
   {
     scooter: { type: mongoose.Schema.Types.ObjectId, ref: "Scooter" },
     name: String,
-    description: { type: String, default: "" },
-    chassisNo: { type: String, default: "" },
-    motorNo: { type: String, default: "" },
-    // vehicle spec fields shown on the printed invoice — all optional
-    model: { type: String, default: "" },
-    color: { type: String, default: "" },
-    batteryType: { type: String, default: "" },
-    motorPower: { type: String, default: "" },
-    range: { type: String, default: "" },
-    topSpeed: { type: String, default: "" },
-    chargingTime: { type: String, default: "" },
-    controller: { type: String, default: "" },
-    wheelSize: { type: String, default: "" },
-    actualPrice: { type: Number, default: 0 }, // cost price — internal only, never shown to customer
-    sellingPrice: { type: Number, default: 0 }, // GST-INCLUSIVE unit price shown on invoice
+    chassisNo: String,
+    motorNo: String,
+    actualPrice: Number,
+    sellingPrice: Number,
     qty: { type: Number, default: 1 },
   },
   { _id: false }
@@ -155,12 +113,9 @@ const billItemSchema = new mongoose.Schema(
 const billSchema = new mongoose.Schema(
   {
     owner: { type: mongoose.Schema.Types.ObjectId, ref: "Owner", required: true, index: true },
-    invoiceNumber: { type: String, default: "" },
     date: { type: Date, required: true, default: Date.now },
     customerName: { type: String, default: "" },
     customerPhone: { type: String, default: "" },
-    customerAddress: { type: String, default: "" },
-    customerAadhar: { type: String, default: "" },
     location: { type: String, default: "" },
     type: { type: String, enum: ["sale", "service", "repair"], default: "sale" },
     serviceDesc: { type: String, default: "" },
@@ -457,55 +412,17 @@ app.get(
   })
 );
 
-// Bills use GST-INCLUSIVE pricing: item.sellingPrice already includes GST
-// (matches how the invoice is presented to the customer — "Price (GST X% Included)").
-// grandTotal = sum(sellingPrice * qty); gstAmount is backed out of that total;
-// subtotal is the pre-GST portion. "total" == grandTotal.
-function computeBillTotals(body) {
-  const grandTotal = (body.items || []).reduce((s, it) => s + Number(it.sellingPrice || 0) * Number(it.qty || 1), 0);
-  const rate = Number(body.gstRate) || 0;
-  const gstAmount = rate > 0 ? +((grandTotal * rate) / (100 + rate)).toFixed(2) : 0;
-  const subtotal = +(grandTotal - gstAmount).toFixed(2);
-  const total = +grandTotal.toFixed(2);
-  return { subtotal, gstAmount, total };
-}
-
-async function nextInvoiceNumber(ownerId, dateStr) {
-  const year = new Date(dateStr || Date.now()).getFullYear();
-  const countThisYear = await Bill.countDocuments({
-    owner: ownerId,
-    invoiceNumber: { $regex: `^INV/${year}/` },
-  });
-  return `INV/${year}/${String(countThisYear + 1).padStart(4, "0")}`;
-}
-
 app.post(
   "/api/bills",
   requireAuth,
   wrap(async (req, res) => {
     const body = req.body;
-    const { subtotal, gstAmount, total } = computeBillTotals(body);
-    const invoiceNumber = await nextInvoiceNumber(req.ownerId, body.date);
-    const bill = await Bill.create({ ...body, owner: req.ownerId, subtotal, gstAmount, total, invoiceNumber });
+    const subtotal = (body.items || []).reduce((s, it) => s + it.sellingPrice * (it.qty || 1), 0);
+    const gstAmount = +((subtotal * (Number(body.gstRate) || 0)) / 100).toFixed(2);
+    const total = +(subtotal + gstAmount).toFixed(2);
+    const bill = await Bill.create({ ...body, owner: req.ownerId, subtotal, gstAmount, total });
     emitUpdate("bill:created", bill);
     res.status(201).json(bill);
-  })
-);
-
-app.put(
-  "/api/bills/:id",
-  requireAuth,
-  wrap(async (req, res) => {
-    const body = req.body;
-    const { subtotal, gstAmount, total } = computeBillTotals(body);
-    const bill = await Bill.findOneAndUpdate(
-      { _id: req.params.id, owner: req.ownerId },
-      { $set: { ...body, subtotal, gstAmount, total } },
-      { new: true }
-    );
-    if (!bill) return res.status(404).json({ message: "Bill not found." });
-    emitUpdate("bill:updated", bill);
-    res.json(bill);
   })
 );
 
