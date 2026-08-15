@@ -1,39 +1,4 @@
-/**
- * VoltLine — Electric Scooter Showroom Management
- * FULL BACKEND (single file)
- *
- * Stack: Node.js + Express + MongoDB (Mongoose) + Socket.io + Cloudinary + JWT
- *
- * SETUP
- * 1. npm init -y
- * 2. npm install express mongoose socket.io cloudinary multer multer-storage-cloudinary
- *               jsonwebtoken bcryptjs cors dotenv
- * 3. Create a .env file next to this file (see ENV VARS block below)
- * 4. node server.js
- *
- * On first boot, if no owner account exists yet, one is auto-created from your
- * OWNER_* env vars (so you don't need a separate seed script).
- *
- * ENV VARS (.env)
- * ----------------------------------------------------------------
- * PORT=5000
- * CLIENT_URL=http://localhost:5173
- *
- * MONGO_URI=mongodb://localhost:27017/voltline
- * # or MongoDB Atlas: mongodb+srv://<user>:<pass>@cluster0.mongodb.net/voltline
- *
- * JWT_SECRET=change_this_to_a_long_random_string
- * JWT_EXPIRES_IN=30d
- *
- * OWNER_NAME=MOHD SUBHAN
- * OWNER_EMAIL=mdsammlk00@gmail.com
- * OWNER_PASSWORD=changeme123
- *
- * CLOUDINARY_CLOUD_NAME=your_cloud_name
- * CLOUDINARY_API_KEY=your_api_key
- * CLOUDINARY_API_SECRET=your_api_secret
- * ----------------------------------------------------------------
- */
+
 
 require("dotenv").config();
 
