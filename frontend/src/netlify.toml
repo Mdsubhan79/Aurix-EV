@@ -1,0 +1,27 @@
+# Place this file in the folder Netlify treats as the "base directory"
+# for this site — i.e. the same folder that contains this project's
+# package.json and vite.config.js (your client folder).
+#
+# If your GitHub repo has both /server and /client folders (a monorepo),
+# you have two options — pick ONE:
+#   A) Set "Base directory" = client in Netlify -> Project configuration ->
+#      Build & deploy -> Build settings, and keep this file at the repo root.
+#   B) Move/duplicate this file so it sits inside /client instead, and leave
+#      Base directory pointed at client either way.
+# Base directory MUST point at the folder with package.json -- if Netlify
+# builds from a repo root that has no package.json/vite config, the build
+# can "succeed" while producing nothing usable, which is exactly this:
+# a "successful" deploy that's just a blank white page.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# Single-page app fallback: without this, opening or refreshing any URL
+# Vite doesn't manage as a literal static file returns Netlify's own 404
+# page instead of your app. Costs nothing, and protects against this class
+# of blank/404 page if client-side routing is ever added later.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
