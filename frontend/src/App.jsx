@@ -624,7 +624,12 @@ function AppShell({ owner, business, setBusiness, tab, setTab, onLogout }) {
         <div style={{ flex: 1, padding: isMobile ? "16px 14px 90px" : "24px 32px 40px", overflowY: "auto" }}>
           {tab === "dashboard" && <Dashboard setTab={setTab} />}
           {tab === "catalogue" && <Catalogue />}
-          {tab === "billing" && <Billing business={business} />}
+          {tab === "billing" && (
+  <Billing
+    business={business}
+    exportCompleteReport={exportCompleteReport}
+  />
+)}
           {tab === "sales" && <Sales />}
           {tab === "expenses" && <Expenses />}
           {tab === "partners" && <Partners business={business} />}
@@ -1074,26 +1079,20 @@ function Expenses() {
 
   const save = async () => { await api.post("/expenses", draft); setDraft(null); load(); };
   const remove = async (id) => { await api.delete(`/expenses/${id}`); load(); };
-
   const exportExcel = () => {
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(expenses.map((e) => ({ Date: e.date?.slice(0, 10), Category: e.category, Amount: e.amount, Location: e.location, Note: e.note }))), "Expenses");
-    XLSX.writeFile(wb, `expenses-${range}-${todayISO()}.xlsx`);
-  };
+  exportCompleteReport(range);
+};
 
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
         <RangeTabs range={range} setRange={setRange} />
         <div style={{ display: "flex", gap: 8 }}>
-          <button
-            onClick={() => exportCompleteReport(range, business)}
-            style={S.ghostBtn}
-          >
-            <Download size={15} />
-            Export Excel
-          </button>
-          <button onClick={exportExcel} style={S.ghostBtn}><Download size={15} /> Export</button>
+          <button onClick={exportExcel} style={S.ghostBtn}>
+  <Download size={15} />
+  Export Excel
+</button>
+          
           <button onClick={() => setDraft(emptyExpense())} style={S.primaryBtn}><Plus size={16} /> Add expense</button>
         </div>
       </div>
@@ -1199,6 +1198,13 @@ function Partners({ business }) {
         <RangeTabs range={range} setRange={setRange} />
         <div style={{ display: "flex", gap: 8 }}>
           {partners.length > 0 && <button onClick={shareToAll} style={S.ghostBtn}><Share2 size={15} /> Share full report</button>}
+            <button
+    onClick={() => exportCompleteReport(range, business)}
+    style={S.ghostBtn}
+  >
+    <Download size={15} />
+    Export Excel
+  </button>
           <button onClick={() => setDraft(emptyPartner())} style={S.primaryBtn}><Plus size={16} /> Add partner</button>
         </div>
       </div>

@@ -1,7 +1,17 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-import { exportCompleteReport } from "./App";
+import {
+  api,
+  socket,
+  S,
+  Field,
+  Modal,
+  Empty,
+  inr,
+  fmtDate,
+  todayISO
+} from "./App";
 import {
   Plus, Trash2, RefreshCw, ArrowLeft, Eye, Pencil, Download,
   MessageCircle, Printer, Calculator, Search, X, Check
@@ -57,10 +67,7 @@ function computeTotals(items, gstRate) {
   return { subtotal, gstAmount, total };
 }
 
-/* -------------------------------------------------------------------------
-   Tiny self-contained toast (App.jsx never mounts react-hot-toast's
-   <Toaster/>, so this stays fully local instead of depending on it)
-------------------------------------------------------------------------- */
+
 function useToast() {
   const [toast, setToast] = useState(null);
   const show = useCallback((message, kind = "success") => {
@@ -96,8 +103,7 @@ function usePrintStyles() {
     document.head.appendChild(style);
   }, []);
 }
-
-export default function Billing({ business }) {
+export default function Billing({ business, exportCompleteReport }) {
   usePrintStyles();
   const [toastNode, showToast] = useToast();
 
@@ -328,12 +334,36 @@ export default function Billing({ business }) {
           <span style={{ background: "rgba(196,241,53,0.12)", color: "#C4F135", padding: "3px 10px", borderRadius: 20, fontSize: 12, fontWeight: 700 }}>
             {bills.length} total
           </span>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={openCreate} style={S.primaryBtn}><Plus size={16} /> New bill</button>
-            <button onClick={() => { setLoading(true); loadBills().finally(() => setLoading(false)); }} style={S.ghostBtn}>
-              <RefreshCw size={15} /> Refresh
-            </button>
-          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+
+  <button
+    onClick={() => exportCompleteReport("month", business)}
+    style={S.ghostBtn}
+  >
+    <Download size={15} />
+    Export Excel
+  </button>
+
+  <button
+    onClick={openCreate}
+    style={S.primaryBtn}
+  >
+    <Plus size={16} />
+    New bill
+  </button>
+
+  <button
+    onClick={() => {
+      setLoading(true);
+      loadBills().finally(() => setLoading(false));
+    }}
+    style={S.ghostBtn}
+  >
+    <RefreshCw size={15} />
+    Refresh
+  </button>
+
+</div>
         </div>
 
         <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
