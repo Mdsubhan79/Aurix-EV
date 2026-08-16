@@ -431,14 +431,35 @@ function TopBar({ business, tab, owner, onLogout, isMobile }) {
    8. DASHBOARD 
 ========================================================================= */
 function Dashboard({ setTab }) {
-  const [range, setRange] = useState("today");
+  const [range, setRange] = useState("month");
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(() => {
-    setLoading(true);
-    api.get(`/dashboard/summary?range=${range}`).then((res) => setSummary(res.data)).finally(() => setLoading(false));
-  }, [range]);
+  const load = useCallback(async () => {
+  setLoading(true);
+
+  try {
+    const res = await api.get(`/dashboard/summary?range=${range}`);
+    console.log("DASHBOARD DATA:", res.data);
+    setSummary(res.data);
+  } catch (error) {
+    console.error("DASHBOARD ERROR:", error);
+    console.error("STATUS:", error.response?.status);
+    console.error("DATA:", error.response?.data);
+
+    setSummary({
+      totalSales: 0,
+      grossProfit: 0,
+      totalExpenses: 0,
+      netProfit: 0,
+      billCount: 0,
+      locations: [],
+      recentBills: [],
+    });
+  } finally {
+    setLoading(false);
+  }
+}, [range]);
 
   useEffect(() => { load(); }, [load]);
 
