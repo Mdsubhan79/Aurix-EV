@@ -567,12 +567,26 @@ app.get(
     const bills = await Bill.find({ owner, date: { $gte: start, $lte: end } });
     const expenses = await Expense.find({ owner, date: { $gte: start, $lte: end } });
 
-    const totalSales = bills.reduce((s, b) => s + b.total, 0);
+    const totalSales = bills.reduce(
+  (s, b) => s + Number(b.total || 0),
+  0
+);
     const grossProfit = bills.reduce(
-      (s, b) => s + b.items.reduce((x, it) => x + (it.sellingPrice - it.actualPrice) * it.qty, 0),
+  (s, b) =>
+    s +
+    (b.items || []).reduce(
+      (x, it) =>
+        x +
+        (Number(it.sellingPrice) - Number(it.actualPrice)) *
+          Number(it.qty || 1),
       0
-    );
-    const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0);
+    ),
+  0
+);
+    const totalExpenses = expenses.reduce(
+  (s, e) => s + Number(e.amount || 0),
+  0
+);
     const netProfit = grossProfit - totalExpenses;
 
     const byLocation = {};
