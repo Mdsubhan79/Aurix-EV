@@ -3,7 +3,7 @@ import axios from "axios";
 import { io } from "socket.io-client";
 import * as XLSX from "xlsx";
 import "./responsive.css";
-import Billing from "./Billing3";
+import Billing from "./Billing";
 import {
   Zap, LayoutDashboard, Bike, Receipt, TrendingUp, Wallet, Users, Settings as SettingsIcon,
   Plus, X, Trash2, Edit2, Search, Download, Share2, ChevronRight, IndianRupee, MapPin,
@@ -12,9 +12,6 @@ import {
 
 /* =========================================================================
    0. API CLIENT + SOCKET
-   Exported so other tab components (e.g. Billing.jsx) share the same
-   axios instance (same auth header logic) and the same live socket
-   connection instead of opening a second one.
 ========================================================================= */
 const API_URL = import.meta.env?.VITE_API_URL;
 const SOCKET_URL = import.meta.env?.VITE_SOCKET_URL;
@@ -58,13 +55,286 @@ function GlobalStyles() {
 }
 
 /* =========================================================================
-   2. UTIL HELPERS — exported for reuse by Billing.jsx
+   2. UTIL HELPERS 
 ========================================================================= */
-export const inr = (n) => "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
-export const fmtDate = (d) => new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-export const todayISO = () => new Date().toISOString().slice(0, 10);
-export const RANGE_LABEL = { today: "Today", week: "This Week", month: "This Month", year: "This Year" };
 
+export const inr = (n) => "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+
+export const fmtDate = (d) =>
+  new Date(d).toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  });
+
+export const todayISO = () => new Date().toISOString().slice(0, 10);
+
+export const RANGE_LABEL = {
+  today: "Today",
+  week: "This Week",
+  month: "This Month",
+  year: "This Year"
+};
+
+
+// ============================================================
+// COMPLETE EXCEL REPORT EXPORT
+// ============================================================
+
+export const exportCompleteReport = async (range = "month", business = null) => {
+  try {
+    const [billsRes, expensesRes, partnersRes, scootersRes] =
+      await Promise.all([
+        api.get(`/bills?range=${range}`),
+        api.get(`/expenses?range=${range}`),
+        api.get("/partners"),
+        api.get("/scooters"),
+      ]);
+
+    const bills = billsRes.data || [];
+    const expenses = expensesRes.data || [];
+    const partners = partnersRes.data || [];
+    const scooters = scootersRes.data || [];
+
+    const wb = XLSX.utils.book_new();
+
+    // =========================================================
+    // 1. SUMMARY
+    // =========================================================
+
+    const totalSales = bills.reduce(
+      (sum, b) => sum + Number(b.total || 0),
+      0
+    );
+
+    const grossProfit = bills.reduce(
+      (sum, b) =>
+        sum +
+        (b.items || []).reduce(
+          (x, item) =>
+            x +
+            (Number(item.sellingPrice || 0) -
+              Number(item.actualPrice || 0)) *
+              Number(item.qty || 1),
+          0
+        ),
+      0
+    );
+
+    const totalExpenses = expenses.reduce(
+      (sum, e) => sum + Number(e.amount || 0),
+      0
+    );
+
+    const netProfit = grossProfit - totalExpenses;
+
+    const summaryData = [
+      {
+        Report: business?.name || "Aurix EV Motors",
+        Period: RANGE_LABEL[range] || range,
+        Generated: todayISO(),
+      },
+      {},
+      {
+        Metric: "Total Sales",
+        Amount: totalSales,
+      },
+      {
+        Metric: "Gross Profit",
+        Amount: grossProfit,
+      },
+      {
+        Metric: "Total Expenses",
+        Amount: totalExpenses,
+      },
+      {
+        Metric: "Net Profit",
+        Amount: netProfit,
+      },
+      {
+        Metric: "Number of Bills",
+        Amount: bills.length,
+      },
+    ];
+
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet(summaryData),
+      "Summary"
+    );
+
+    // =========================================================
+    // 2. BILLING
+    // =========================================================
+
+    const billingRows = [];
+
+    bills.forEach((bill) => {
+      if (!bill.items || bill.items.length === 0) {
+        billingRows.push({
+          Date: bill.date?.slice(0, 10),
+          Invoice: bill.invoiceNumber,
+          Customer: bill.customerName,
+          Phone: bill.customerPhone,
+          Address: bill.customerAddress,
+          Location: bill.location,
+          Type: bill.type,
+          Scooter: "",
+          "Chassis No": "",
+          "Motor No": "",
+          "Actual Price": "",
+          "Selling Price": "",
+          Qty: "",
+          "Profit Margin": "",
+          Subtotal: bill.subtotal,
+          GST: bill.gstAmount,
+          Total: bill.total,
+          Payment: bill.paymentMode,
+        });
+      } else {
+        bill.items.forEach((item) => {
+          billingRows.push({
+            Date: bill.date?.slice(0, 10),
+            Invoice: bill.invoiceNumber,
+            Customer: bill.customerName,
+            Phone: bill.customerPhone,
+            Address: bill.customerAddress,
+            Location: bill.location,
+            Type: bill.type,
+            Scooter: item.name,
+            "Chassis No": item.chassisNo,
+            "Motor No": item.motorNo,
+            "Actual Price": item.actualPrice,
+            "Selling Price": item.sellingPrice,
+            Qty: item.qty,
+            "Profit Margin":
+              (Number(item.sellingPrice || 0) -
+                Number(item.actualPrice || 0)) *
+              Number(item.qty || 1),
+            Subtotal: bill.subtotal,
+            GST: bill.gstAmount,
+            Total: bill.total,
+            Payment: bill.paymentMode,
+          });
+        });
+      }
+    });
+
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet(billingRows),
+      "Billing"
+    );
+
+    // =========================================================
+    // 3. SALES
+    // =========================================================
+
+    const salesRows = bills.map((bill) => ({
+      Date: bill.date?.slice(0, 10),
+      Invoice: bill.invoiceNumber,
+      Customer: bill.customerName || "Walk-in",
+      Phone: bill.customerPhone,
+      Location: bill.location,
+      Type: bill.type,
+      Subtotal: bill.subtotal,
+      GST: bill.gstAmount,
+      Total: bill.total,
+      Payment: bill.paymentMode,
+      Profit: (bill.items || []).reduce(
+        (sum, item) =>
+          sum +
+          (Number(item.sellingPrice || 0) -
+            Number(item.actualPrice || 0)) *
+            Number(item.qty || 1),
+        0
+      ),
+    }));
+
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet(salesRows),
+      "Sales"
+    );
+
+    // =========================================================
+    // 4. EXPENSES
+    // =========================================================
+
+    const expenseRows = expenses.map((expense) => ({
+      Date: expense.date?.slice(0, 10),
+      Category: expense.category,
+      Amount: expense.amount,
+      Location: expense.location,
+      Note: expense.note,
+    }));
+
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet(expenseRows),
+      "Expenses"
+    );
+
+    // =========================================================
+    // 5. PARTNERS
+    // =========================================================
+
+    const partnerRows = partners.map((partner) => {
+      const share =
+        (Math.max(0, netProfit) *
+          Number(partner.sharePercent || 0)) /
+        100;
+
+      return {
+        Name: partner.name,
+        Phone: partner.phone,
+        "Share %": partner.sharePercent,
+        "Profit Share": share,
+      };
+    });
+
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet(partnerRows),
+      "Partners"
+    );
+
+    // =========================================================
+    // 6. CATALOGUE
+    // =========================================================
+
+    const catalogueRows = scooters.map((s) => ({
+      Name: s.name,
+      "Chassis No": s.chassisNo,
+      "Motor No": s.motorNo,
+      Warranty: s.warranty,
+      "Scooter Price": s.scooterPrice,
+      "Battery Price": s.batteryPrice,
+      "Actual Price": s.actualPrice,
+      "Selling Price": s.sellingPrice,
+      Status: s.stockStatus,
+    }));
+
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet(catalogueRows),
+      "Catalogue"
+    );
+
+    // =========================================================
+    // DOWNLOAD
+    // =========================================================
+
+    XLSX.writeFile(
+      wb,
+      `Aurix-EV-${range}-Report-${todayISO()}.xlsx`
+    );
+
+  } catch (error) {
+    console.error("Excel export failed:", error);
+    alert("Unable to export Excel report.");
+  }
+};
 /* =========================================================================
    3. ROOT APP
 ========================================================================= */
@@ -737,21 +1007,8 @@ function Sales() {
   const profit = bills.reduce((s, b) => s + (b.items || []).reduce((x, it) => x + (it.sellingPrice - it.actualPrice) * it.qty, 0), 0);
 
   const exportExcel = () => {
-    const rows = [];
-    bills.forEach((b) => {
-      if (b.items.length === 0) {
-        rows.push({ Date: b.date?.slice(0, 10), Customer: b.customerName, Phone: b.customerPhone, Location: b.location, Type: b.type, Scooter: "", "Chassis No": "", "Motor No": "", "Actual Price": "", "Selling Price": "", Qty: "", "Profit Margin": "", Subtotal: b.subtotal, GST: b.gstAmount, Total: b.total, Payment: b.paymentMode });
-      } else {
-        b.items.forEach((it) => {
-          rows.push({ Date: b.date?.slice(0, 10), Customer: b.customerName, Phone: b.customerPhone, Location: b.location, Type: b.type, Scooter: it.name, "Chassis No": it.chassisNo, "Motor No": it.motorNo, "Actual Price": it.actualPrice, "Selling Price": it.sellingPrice, Qty: it.qty, "Profit Margin": (it.sellingPrice - it.actualPrice) * it.qty, Subtotal: b.subtotal, GST: b.gstAmount, Total: b.total, Payment: b.paymentMode });
-        });
-      }
-    });
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Sales");
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(scooters.map((s) => ({ Name: s.name, "Chassis No": s.chassisNo, "Motor No": s.motorNo, Warranty: s.warranty, "Scooter Price": s.scooterPrice, "Battery Price": s.batteryPrice, "Actual Price": s.actualPrice, "Selling Price": s.sellingPrice }))), "Catalogue");
-    XLSX.writeFile(wb, `sales-${range}-${todayISO()}.xlsx`);
-  };
+  exportCompleteReport(range);
+};
 
   return (
     <div>
@@ -829,6 +1086,13 @@ function Expenses() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
         <RangeTabs range={range} setRange={setRange} />
         <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={() => exportCompleteReport(range, business)}
+            style={S.ghostBtn}
+          >
+            <Download size={15} />
+            Export Excel
+          </button>
           <button onClick={exportExcel} style={S.ghostBtn}><Download size={15} /> Export</button>
           <button onClick={() => setDraft(emptyExpense())} style={S.primaryBtn}><Plus size={16} /> Add expense</button>
         </div>

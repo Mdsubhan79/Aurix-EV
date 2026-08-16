@@ -1,24 +1,14 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import { exportCompleteReport } from "./App";
 import {
   Plus, Trash2, RefreshCw, ArrowLeft, Eye, Pencil, Download,
   MessageCircle, Printer, Calculator, Search, X, Check
 } from "lucide-react";
 import { api, socket, S, Field, Modal, Empty, inr, fmtDate, todayISO } from "./App";
 
-/**
- * Billing tab — no react-router (list/create/edit/view are local state,
- * this all lives inside one "Billing" tab of AppShell — that's what fixes
- * the "route not found" error on Edit).
- *
- * GST is INCLUSIVE: item.sellingPrice already has GST baked in (matches
- * "Price (GST X% Included)" on the invoice). Server (server.js) computes
- * the same way — see computeBillTotals() there — so what you see here
- * always matches what gets saved.
- *
- * Requires: npm install jspdf html2canvas
- */
+
 
 const VEHICLE_SPEC_FIELDS = [
   ["model", "Model"],
@@ -90,10 +80,6 @@ function useToast() {
   return [node, show];
 }
 
-/* -------------------------------------------------------------------------
-   Print CSS — only #bill-preview is visible when printing, so what prints
-   is exactly the same node that's on screen and that PDF export captures.
-------------------------------------------------------------------------- */
 function usePrintStyles() {
   useEffect(() => {
     if (document.getElementById("bill-print-css")) return;
