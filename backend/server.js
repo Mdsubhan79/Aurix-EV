@@ -422,10 +422,6 @@ app.get(
   })
 );
 
-// Bills use GST-INCLUSIVE pricing: item.sellingPrice already includes GST
-// (matches how the invoice is presented to the customer — "Price (GST X% Included)").
-// grandTotal = sum(sellingPrice * qty); gstAmount is backed out of that total;
-// subtotal is the pre-GST portion. "total" == grandTotal.
 function computeBillTotals(body) {
   const grandTotal = (body.items || []).reduce((s, it) => s + Number(it.sellingPrice || 0) * Number(it.qty || 1), 0);
   const rate = Number(body.gstRate) || 0;
