@@ -190,23 +190,38 @@ function requireAuth(req, res, next) {
 
 function getRangeDates(range) {
   const now = new Date();
-  let start;
+
   const end = new Date(now);
   end.setHours(23, 59, 59, 999);
+
+  let start;
+
   if (range === "today") {
     start = new Date(now);
     start.setHours(0, 0, 0, 0);
+
   } else if (range === "week") {
+    // Monday → Sunday
     start = new Date(now);
-    start.setDate(now.getDate() - now.getDay());
+
+    const day = start.getDay(); // Sunday=0, Monday=1, ... Saturday=6
+    const daysFromMonday = day === 0 ? 6 : day - 1;
+
+    start.setDate(start.getDate() - daysFromMonday);
     start.setHours(0, 0, 0, 0);
+
   } else if (range === "month") {
     start = new Date(now.getFullYear(), now.getMonth(), 1);
+    start.setHours(0, 0, 0, 0);
+
   } else if (range === "year") {
     start = new Date(now.getFullYear(), 0, 1);
+    start.setHours(0, 0, 0, 0);
+
   } else {
     start = new Date(0);
   }
+
   return { start, end };
 }
 
