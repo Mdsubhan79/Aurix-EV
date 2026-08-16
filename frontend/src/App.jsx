@@ -16,8 +16,8 @@ import {
    axios instance (same auth header logic) and the same live socket
    connection instead of opening a second one.
 ========================================================================= */
-const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:5000/api";
-const SOCKET_URL = import.meta.env?.VITE_SOCKET_URL || "http://localhost:5000";
+const API_URL = import.meta.env?.VITE_API_URL;
+const SOCKET_URL = import.meta.env?.VITE_SOCKET_URL;
 
 export const api = axios.create({ baseURL: API_URL });
 api.interceptors.request.use((config) => {
@@ -158,7 +158,7 @@ function LoginScreen({ onLoggedIn }) {
     setErr("");
     setBusy(true);
     try {
-      const res = await api.post("/auth/login", { email, password });
+      const res = await api.post("/api/auth/login", { email, password });
       onLoggedIn(res.data);
     } catch (e2) {
       setErr(e2.response?.data?.message || "Login failed. Check your credentials.");
