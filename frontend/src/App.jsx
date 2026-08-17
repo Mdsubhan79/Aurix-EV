@@ -428,7 +428,7 @@ function LoginScreen({ onLoggedIn }) {
     setErr("");
     setBusy(true);
     try {
-      const res = await api.post("/api/auth/login", { email, password });
+      const res = await api.post("/auth/login", { email, password });
       onLoggedIn(res.data);
     } catch (e2) {
       setErr(e2.response?.data?.message || "Login failed. Check your credentials.");
