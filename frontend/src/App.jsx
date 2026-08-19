@@ -7,7 +7,15 @@ import Billing from "./Billing";
 import {
   Zap, LayoutDashboard, Bike, Receipt, TrendingUp, Wallet, Users, Settings as SettingsIcon,
   Plus, X, Trash2, Edit2, Search, Download, Share2, ChevronRight, IndianRupee, MapPin,
-  Image as ImageIcon, Upload, Check, ArrowUpRight, ArrowDownRight, LogOut, Eye, EyeOff
+Image as ImageIcon,
+Upload,
+Check,
+ArrowUpRight,
+ArrowDownRight,
+LogOut,
+Eye,
+EyeOff,
+MoreHorizontal
 } from "lucide-react";
 
 /* =========================================================================
@@ -670,22 +678,7 @@ function Sidebar({ tab, setTab, business, onLogout }) {
   );
 }
 
-function BottomNav({ tab, setTab }) {
-  const visible = NAV.filter((n) => ["dashboard", "catalogue", "billing", "sales", "expenses"].includes(n.id));
-  return (
-    <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "#171B23", borderTop: "1px solid #232833", display: "flex", justifyContent: "space-around", padding: "8px 4px calc(env(safe-area-inset-bottom,0px) + 8px)", zIndex: 10 }}>
-      {visible.map((n) => {
-        const Icon = n.icon;
-        const active = tab === n.id;
-        return (
-          <button key={n.id} onClick={() => setTab(n.id)} style={{ background: "none", border: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: active ? "#C4F135" : "#5A616F", fontSize: 10, padding: "4px 8px" }}>
-            <Icon size={19} /> {n.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
+
 
 function TopBar({ business, tab, owner, onLogout, isMobile }) {
   const label = NAV.find((n) => n.id === tab)?.label || "";

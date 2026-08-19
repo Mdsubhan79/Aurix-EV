@@ -501,7 +501,47 @@ function Dashboard({ setTab }) {
     </div>
   );
 }
+  const downloadPDF = async (bill) => {
+    const input = document.getElementById("bill-preview");
+    if (!input) return showToast("Invoice element not found", "error");
+    showToast("Generating PDF…");
+    try {
+      const clone = input.cloneNode(true);
+      Object.assign(clone.style, {
+        width: "794px", maxWidth: "794px", minHeight: "1123px",
+        position: "fixed", left: "0", top: "0", zIndex: "-9999",
+        background: "#fff", boxShadow: "none",
+      });
+      document.body.appendChild(clone);
+      await new Promise((r) => setTimeout(r, 250));
 
+      const canvas = await html2canvas(clone, {
+        scale: 3, useCORS: true, backgroundColor: "#fff",
+        width: clone.offsetWidth, height: clone.offsetHeight,
+        windowWidth: clone.offsetWidth, windowHeight: clone.offsetHeight,
+      });
+      clone.remove();
+
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const width = 210;
+      const height = (canvas.height * width) / canvas.width;
+      const image = canvas.toDataURL("image/png", 1);
+
+      if (height <= 297) {
+        pdf.addImage(image, "PNG", 0, 0, width, height);
+      } else {
+        const scale = 297 / height;
+        pdf.addImage(image, "PNG", (210 - width * scale) / 2, 0, width * scale, 297);
+      }
+
+      const name = (bill.customerName || "Customer").replace(/[^a-zA-Z0-9]/g, "_");
+      pdf.save(`Invoice_${name}_${(bill.invoiceNumber || "bill").replace(/\//g, "-")}.pdf`);
+      showToast("PDF downloaded");
+    } catch (err) {
+      console.error(err);
+      showToast("Failed to download PDF", "error");
+    }
+  };
 function QuickAction({ icon: Icon, label, onClick }) {
   return (
     <button onClick={onClick} style={{ ...S.card, cursor: "pointer", display: "flex", alignItems: "center", gap: 10, padding: 16 }}>

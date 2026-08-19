@@ -278,47 +278,123 @@ export default function Billing({ business, exportCompleteReport }) {
     window.open(phone ? `https://wa.me/${phone}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
   };
 
-  const downloadPDF = async (bill) => {
+const downloadPDF = async () => {
+  try {
     const input = document.getElementById("bill-preview");
-    if (!input) return showToast("Invoice element not found", "error");
-    showToast("Generating PDF…");
-    try {
-      const clone = input.cloneNode(true);
-      Object.assign(clone.style, {
-        width: "794px", maxWidth: "794px", minHeight: "1123px",
-        position: "fixed", left: "0", top: "0", zIndex: "-9999",
-        background: "#fff", boxShadow: "none",
-      });
-      document.body.appendChild(clone);
-      await new Promise((r) => setTimeout(r, 250));
 
-      const canvas = await html2canvas(clone, {
-        scale: 3, useCORS: true, backgroundColor: "#fff",
-        width: clone.offsetWidth, height: clone.offsetHeight,
-        windowWidth: clone.offsetWidth, windowHeight: clone.offsetHeight,
-      });
-      clone.remove();
-
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-      const width = 210;
-      const height = (canvas.height * width) / canvas.width;
-      const image = canvas.toDataURL("image/png", 1);
-
-      if (height <= 297) {
-        pdf.addImage(image, "PNG", 0, 0, width, height);
-      } else {
-        const scale = 297 / height;
-        pdf.addImage(image, "PNG", (210 - width * scale) / 2, 0, width * scale, 297);
-      }
-
-      const name = (bill.customerName || "Customer").replace(/[^a-zA-Z0-9]/g, "_");
-      pdf.save(`Invoice_${name}_${(bill.invoiceNumber || "bill").replace(/\//g, "-")}.pdf`);
-      showToast("PDF downloaded");
-    } catch (err) {
-      console.error(err);
-      showToast("Failed to download PDF", "error");
+    if (!input) {
+      return toast.error("Invoice element not found");
     }
-  };
+
+    const loadingToast = toast.loading("Generating PDF...");
+
+    const clone = input.cloneNode(true);
+
+    Object.assign(clone.style, {
+      width: "794px",
+      minHeight: "auto",
+      height: "auto",
+      padding: "32px",
+      position: "fixed",
+      left: "0",
+      top: "0",
+      zIndex: "-9999",
+      opacity: "1",
+      background: "#ffffff",
+      boxShadow: "none",
+      borderRadius: "0",
+    });
+
+    document.body.appendChild(clone);
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    const canvas = await html2canvas(clone, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: "#ffffff",
+      windowWidth: clone.scrollWidth,
+      windowHeight: clone.scrollHeight,
+      scrollX: 0,
+      scrollY: 0,
+    });
+
+    clone.remove();
+
+    const pdf = new jsPDF({
+      orientation: "portrait",
+      unit: "mm",
+      format: "a4",
+    });
+
+    const pdfWidth = 210;
+    const pdfHeight = 297;
+
+    const margin = 8;
+
+    const contentWidth = pdfWidth - margin * 2;
+
+    const imageHeight =
+      (canvas.height * contentWidth) / canvas.width;
+
+    const pageContentHeight =
+      pdfHeight - margin * 2;
+
+    const imageData = canvas.toDataURL(
+      "image/jpeg",
+      0.95
+    );
+
+    let heightLeft = imageHeight;
+    let position = margin;
+
+    pdf.addImage(
+      imageData,
+      "JPEG",
+      margin,
+      position,
+      contentWidth,
+      imageHeight
+    );
+
+    heightLeft -= pageContentHeight;
+
+    while (heightLeft > 0) {
+      pdf.addPage();
+
+      position =
+        margin + heightLeft - imageHeight;
+
+      pdf.addImage(
+        imageData,
+        "JPEG",
+        margin,
+        position,
+        contentWidth,
+        imageHeight
+      );
+
+      heightLeft -= pageContentHeight;
+    }
+
+    const customerName = (
+      bill.customerDetails?.name || "Customer"
+    ).replace(/[^a-zA-Z0-9]/g, "_");
+
+    pdf.save(
+      `Invoice_${customerName}_${bill.invoiceNumber || "Invoice"}.pdf`
+    );
+
+    toast.dismiss(loadingToast);
+
+    toast.success("PDF downloaded successfully");
+
+  } catch (error) {
+    console.error("PDF error:", error);
+
+    toast.error("Failed to download PDF");
+  }
+};
 
   /* ============================= LIST ============================= */
   if (mode === "list") {
