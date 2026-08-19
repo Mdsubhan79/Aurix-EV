@@ -678,7 +678,166 @@ function Sidebar({ tab, setTab, business, onLogout }) {
   );
 }
 
+function BottomNav({ tab, setTab }) {
+  const [showMore, setShowMore] = useState(false);
 
+  const mainNav = NAV.filter((n) =>
+    ["dashboard", "catalogue", "billing", "sales", "expenses"].includes(n.id)
+  );
+
+  const moreNav = NAV.filter((n) =>
+    ["partners", "settings"].includes(n.id)
+  );
+
+  const selectTab = (id) => {
+    setTab(id);
+    setShowMore(false);
+  };
+
+  return (
+    <>
+      {showMore && (
+        <>
+          <div
+            onClick={() => setShowMore(false)}
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.45)",
+              zIndex: 98,
+            }}
+          />
+
+          <div
+            style={{
+              position: "fixed",
+              left: 12,
+              right: 12,
+              bottom: 78,
+              background: "#1B1F27",
+              border: "1px solid #2A3140",
+              borderRadius: 16,
+              padding: 10,
+              zIndex: 99,
+              boxShadow: "0 -8px 30px rgba(0,0,0,0.35)",
+            }}
+          >
+            {moreNav.map((n) => {
+              const Icon = n.icon;
+
+              return (
+                <button
+                  key={n.id}
+                  onClick={() => selectTab(n.id)}
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    padding: "15px 14px",
+                    background:
+                      tab === n.id ? "#252C38" : "transparent",
+                    border: "none",
+                    borderRadius: 10,
+                    color:
+                      tab === n.id ? "#C4F135" : "#D6DAE2",
+                    cursor: "pointer",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    textAlign: "left",
+                  }}
+                >
+                  <Icon size={19} />
+                  {n.label}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      <div
+        style={{
+          position: "fixed",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          background: "#171B23",
+          borderTop: "1px solid #232833",
+          display: "flex",
+          justifyContent: "space-around",
+          padding:
+            "8px 2px calc(env(safe-area-inset-bottom,0px) + 8px)",
+          zIndex: 100,
+        }}
+      >
+        {mainNav.map((n) => {
+          const Icon = n.icon;
+          const active = tab === n.id;
+
+          return (
+            <button
+              key={n.id}
+              onClick={() => selectTab(n.id)}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                background: "none",
+                border: "none",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 4,
+                color: active ? "#C4F135" : "#5A616F",
+                fontSize: 10,
+                padding: "4px 2px",
+                cursor: "pointer",
+              }}
+            >
+              <Icon size={18} />
+              <span
+                style={{
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  maxWidth: "100%",
+                }}
+              >
+                {n.label}
+              </span>
+            </button>
+          );
+        })}
+
+        <button
+          onClick={() => setShowMore((v) => !v)}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            background: "none",
+            border: "none",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 4,
+            color:
+              showMore ||
+              tab === "partners" ||
+              tab === "settings"
+                ? "#C4F135"
+                : "#5A616F",
+            fontSize: 10,
+            padding: "4px 2px",
+            cursor: "pointer",
+          }}
+        >
+          <MoreHorizontal size={20} />
+          <span>More</span>
+        </button>
+      </div>
+    </>
+  );
+}
 
 function TopBar({ business, tab, owner, onLogout, isMobile }) {
   const label = NAV.find((n) => n.id === tab)?.label || "";
