@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import axios from "axios";
 import { io } from "socket.io-client";
-import * as XLSX from "xlsx";
 import "./responsive.css";
 import Billing from "./Billing";
 import {
@@ -86,263 +85,35 @@ export const RANGE_LABEL = {
 
 
 // ============================================================
-// COMPLETE EXCEL REPORT EXPORT
-// ============================================================
+/* =========================================================================
+   GOOGLE SHEET COMPLETE REPORT EXPORT
+======================================================================== */
 
-export const exportCompleteReport = async (range = "month", business = null) => {
+export const exportCompleteReport = async () => {
   try {
-    const [billsRes, expensesRes, partnersRes, scootersRes] =
-      await Promise.all([
-        api.get(`/bills?range=${range}`),
-        api.get(`/expenses?range=${range}`),
-        api.get("/partners"),
-        api.get("/scooters"),
-      ]);
+    const response = await api.post("/reports/export-complete");
 
-    const bills = billsRes.data || [];
-    const expenses = expensesRes.data || [];
-    const partners = partnersRes.data || [];
-    const scooters = scootersRes.data || [];
-
-    const wb = XLSX.utils.book_new();
-
-    // =========================================================
-    // 1. SUMMARY
-    // =========================================================
-
-    const totalSales = bills.reduce(
-      (sum, b) => sum + Number(b.total || 0),
-      0
+    alert(
+      response.data?.message ||
+      "Complete report exported successfully to Google Sheets!"
     );
 
-    const grossProfit = bills.reduce(
-      (sum, b) =>
-        sum +
-        (b.items || []).reduce(
-          (x, item) =>
-            x +
-            (Number(item.sellingPrice || 0) -
-              Number(item.actualPrice || 0)) *
-              Number(item.qty || 1),
-          0
-        ),
-      0
-    );
-
-    const totalExpenses = expenses.reduce(
-      (sum, e) => sum + Number(e.amount || 0),
-      0
-    );
-
-    const netProfit = grossProfit - totalExpenses;
-
-    const summaryData = [
-      {
-        Report: business?.name || "Aurix EV Motors",
-        Period: RANGE_LABEL[range] || range,
-        Generated: todayISO(),
-      },
-      {},
-      {
-        Metric: "Total Sales",
-        Amount: totalSales,
-      },
-      {
-        Metric: "Gross Profit",
-        Amount: grossProfit,
-      },
-      {
-        Metric: "Total Expenses",
-        Amount: totalExpenses,
-      },
-      {
-        Metric: "Net Profit",
-        Amount: netProfit,
-      },
-      {
-        Metric: "Number of Bills",
-        Amount: bills.length,
-      },
-    ];
-
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.json_to_sheet(summaryData),
-      "Summary"
-    );
-
-    // =========================================================
-    // 2. BILLING
-    // =========================================================
-
-    const billingRows = [];
-
-    bills.forEach((bill) => {
-      if (!bill.items || bill.items.length === 0) {
-        billingRows.push({
-          Date: bill.date?.slice(0, 10),
-          Invoice: bill.invoiceNumber,
-          Customer: bill.customerName,
-          Phone: bill.customerPhone,
-          Address: bill.customerAddress,
-          Location: bill.location,
-          Type: bill.type,
-          Scooter: "",
-          "Chassis No": "",
-          "Motor No": "",
-          "Actual Price": "",
-          "Selling Price": "",
-          Qty: "",
-          "Profit Margin": "",
-          Subtotal: bill.subtotal,
-          GST: bill.gstAmount,
-          Total: bill.total,
-          Payment: bill.paymentMode,
-        });
-      } else {
-        bill.items.forEach((item) => {
-          billingRows.push({
-            Date: bill.date?.slice(0, 10),
-            Invoice: bill.invoiceNumber,
-            Customer: bill.customerName,
-            Phone: bill.customerPhone,
-            Address: bill.customerAddress,
-            Location: bill.location,
-            Type: bill.type,
-            Scooter: item.name,
-            "Chassis No": item.chassisNo,
-            "Motor No": item.motorNo,
-            "Actual Price": item.actualPrice,
-            "Selling Price": item.sellingPrice,
-            Qty: item.qty,
-            "Profit Margin":
-              (Number(item.sellingPrice || 0) -
-                Number(item.actualPrice || 0)) *
-              Number(item.qty || 1),
-            Subtotal: bill.subtotal,
-            GST: bill.gstAmount,
-            Total: bill.total,
-            Payment: bill.paymentMode,
-          });
-        });
-      }
-    });
-
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.json_to_sheet(billingRows),
-      "Billing"
-    );
-
-    // =========================================================
-    // 3. SALES
-    // =========================================================
-
-    const salesRows = bills.map((bill) => ({
-      Date: bill.date?.slice(0, 10),
-      Invoice: bill.invoiceNumber,
-      Customer: bill.customerName || "Walk-in",
-      Phone: bill.customerPhone,
-      Location: bill.location,
-      Type: bill.type,
-      Subtotal: bill.subtotal,
-      GST: bill.gstAmount,
-      Total: bill.total,
-      Payment: bill.paymentMode,
-      Profit: (bill.items || []).reduce(
-        (sum, item) =>
-          sum +
-          (Number(item.sellingPrice || 0) -
-            Number(item.actualPrice || 0)) *
-            Number(item.qty || 1),
-        0
-      ),
-    }));
-
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.json_to_sheet(salesRows),
-      "Sales"
-    );
-
-    // =========================================================
-    // 4. EXPENSES
-    // =========================================================
-
-    const expenseRows = expenses.map((expense) => ({
-      Date: expense.date?.slice(0, 10),
-      Category: expense.category,
-      Amount: expense.amount,
-      Location: expense.location,
-      Note: expense.note,
-    }));
-
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.json_to_sheet(expenseRows),
-      "Expenses"
-    );
-
-    // =========================================================
-    // 5. PARTNERS
-    // =========================================================
-
-    const partnerRows = partners.map((partner) => {
-      const share =
-        (Math.max(0, netProfit) *
-          Number(partner.sharePercent || 0)) /
-        100;
-
-      return {
-        Name: partner.name,
-        Phone: partner.phone,
-        "Share %": partner.sharePercent,
-        "Profit Share": share,
-      };
-    });
-
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.json_to_sheet(partnerRows),
-      "Partners"
-    );
-
-    // =========================================================
-    // 6. CATALOGUE
-    // =========================================================
-
-    const catalogueRows = scooters.map((s) => ({
-      Name: s.name,
-      "Chassis No": s.chassisNo,
-      "Motor No": s.motorNo,
-      Warranty: s.warranty,
-      "Scooter Price": s.scooterPrice,
-      "Battery Price": s.batteryPrice,
-      "Actual Price": s.actualPrice,
-      "Selling Price": s.sellingPrice,
-      Status: s.stockStatus,
-    }));
-
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.json_to_sheet(catalogueRows),
-      "Catalogue"
-    );
-
-    // =========================================================
-    // DOWNLOAD
-    // =========================================================
-
-    XLSX.writeFile(
-      wb,
-      `Aurix-EV-${range}-Report-${todayISO()}.xlsx`
-    );
-
+    return response.data;
   } catch (error) {
-    console.error("Excel export failed:", error);
-    alert("Unable to export Excel report.");
+    console.error(
+      "Google Sheet export failed:",
+      error.response?.data || error
+    );
+
+    alert(
+      error.response?.data?.message ||
+      "Unable to export complete report to Google Sheets."
+    );
+
+    throw error;
   }
 };
+
 /* =========================================================================
    3. ROOT APP
 ========================================================================= */
@@ -1163,15 +934,15 @@ function Sales() {
   const total = bills.reduce((s, b) => s + b.total, 0);
   const profit = bills.reduce((s, b) => s + (b.items || []).reduce((x, it) => x + (it.sellingPrice - it.actualPrice) * it.qty, 0), 0);
 
-  const exportExcel = () => {
-  exportCompleteReport(range);
-};
+  const exportGoogleSheet = () => {
+    exportCompleteReport();
+  };
 
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
         <RangeTabs range={range} setRange={setRange} />
-        <button onClick={exportExcel} style={S.ghostBtn}><Download size={15} /> Export Excel</button>
+        <button onClick={exportGoogleSheet} style={S.ghostBtn}><Download size={15} /> Export Google Sheet</button>
       </div>
       <div style={S.statGrid}>
         <StatCard icon={IndianRupee} label="Total sales" value={inr(total)} accent="#C4F135" sub={`${bills.length} bills`} />
@@ -1231,18 +1002,18 @@ function Expenses() {
 
   const save = async () => { await api.post("/expenses", draft); setDraft(null); load(); };
   const remove = async (id) => { await api.delete(`/expenses/${id}`); load(); };
-  const exportExcel = () => {
-  exportCompleteReport(range);
-};
+  const exportGoogleSheet = () => {
+    exportCompleteReport();
+  };
 
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
         <RangeTabs range={range} setRange={setRange} />
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={exportExcel} style={S.ghostBtn}>
+          <button onClick={exportGoogleSheet} style={S.ghostBtn}>
   <Download size={15} />
-  Export Excel
+  Export Google Sheet
 </button>
           
           <button onClick={() => setDraft(emptyExpense())} style={S.primaryBtn}><Plus size={16} /> Add expense</button>
@@ -1351,11 +1122,11 @@ function Partners({ business }) {
         <div style={{ display: "flex", gap: 8 }}>
           {partners.length > 0 && <button onClick={shareToAll} style={S.ghostBtn}><Share2 size={15} /> Share full report</button>}
             <button
-    onClick={() => exportCompleteReport(range, business)}
+    onClick={exportCompleteReport}
     style={S.ghostBtn}
   >
     <Download size={15} />
-    Export Excel
+    Export Google Sheet
   </button>
           <button onClick={() => setDraft(emptyPartner())} style={S.primaryBtn}><Plus size={16} /> Add partner</button>
         </div>

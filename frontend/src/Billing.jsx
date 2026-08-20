@@ -103,12 +103,10 @@ function usePrintStyles() {
       }
 
       @media print {
-
         html,
         body {
           width: 210mm !important;
           height: auto !important;
-          min-height: 0 !important;
           margin: 0 !important;
           padding: 0 !important;
           background: #ffffff !important;
@@ -129,39 +127,45 @@ function usePrintStyles() {
           left: 0 !important;
           top: 0 !important;
 
-          width: 100% !important;
-          max-width: none !important;
-          min-width: 0 !important;
+          width: 198mm !important;
+          min-width: 198mm !important;
+          max-width: 198mm !important;
 
-          height: auto !important;
-          min-height: 0 !important;
+          min-height: 285mm !important;
+          height: 285mm !important;
 
           margin: 0 !important;
           padding: 0 !important;
 
           box-sizing: border-box !important;
+
+          display: flex !important;
+          flex-direction: column !important;
+
           border: none !important;
           border-radius: 0 !important;
           box-shadow: none !important;
 
           background: #ffffff !important;
-          overflow: visible !important;
+          overflow: hidden !important;
         }
 
         .no-print {
           display: none !important;
         }
 
+        #bill-print-footer {
+          margin-top: auto !important;
+        }
+
         table {
           width: 100% !important;
           border-collapse: collapse !important;
-          break-inside: avoid !important;
-          page-break-inside: avoid !important;
         }
 
         tr {
-          break-inside: avoid !important;
           page-break-inside: avoid !important;
+          break-inside: avoid !important;
         }
       }
     `;
@@ -173,6 +177,7 @@ function usePrintStyles() {
     };
   }, []);
 }
+
 export default function Billing({ business, exportCompleteReport }) {
   usePrintStyles();
   const [toastNode, showToast] = useToast();
@@ -748,28 +753,30 @@ return (
     </div>
 
     {/* INVOICE */}
-    <div
-      id="bill-preview"
-      style={{
-        width: "794px",
-        maxWidth: "100%",
-        minHeight: 0,
-        height: "auto",
+   <div
+  id="bill-preview"
+  style={{
+    width: "794px",
+    maxWidth: "100%",
+    minHeight: "1123px",
 
-        margin: "0 auto",
-        padding: "20px 24px",
+    margin: "0 auto",
+    padding: "20px 24px",
 
-        boxSizing: "border-box",
+    boxSizing: "border-box",
 
-        background: "#ffffff",
-        color: "#12151A",
-        border: "1px solid #e5e7eb",
-        borderRadius: 6,
+    background: "#ffffff",
+    color: "#12151A",
+    border: "1px solid #e5e7eb",
+    borderRadius: 6,
 
-        fontFamily: "'Inter', sans-serif",
-        overflow: "hidden",
-      }}
-    >
+    fontFamily: "'Inter', sans-serif",
+
+    display: "flex",
+    flexDirection: "column",
+  }}
+>
+    
       {/* HEADER */}
       <div
         style={{
