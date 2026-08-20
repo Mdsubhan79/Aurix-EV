@@ -12,6 +12,7 @@ const multer = require("multer");
 const { Server } = require("socket.io");
 const cloudinary = require("cloudinary").v2;
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const { sheets, GOOGLE_SHEET_ID } = require("./googleSheets");
 
 /* =========================================================================
    1. CLOUDINARY CONFIG
@@ -251,6 +252,18 @@ app.use(express.json({ limit: "5mb" }));
 
 app.get("/api/health", (req, res) => res.json({ ok: true, service: "voltline-server" }));
 
+/* =========================================================================
+   HELPER
+========================================================================= */
+function formatSheetDate(date) {
+  if (!date) return "";
+
+  return new Date(date).toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
 /* =========================================================================
    5. AUTH ROUTES
 ========================================================================= */
@@ -627,7 +640,7 @@ app.get(
 );
 
 /* =========================================================================
-   12. 404 + ERROR HANDLING
+   12. ERROR HANDLING
 ========================================================================= */
 app.use((req, res) => {
   res.status(404).json({ message: `Route not found: ${req.method} ${req.originalUrl}` });
@@ -639,7 +652,7 @@ app.use((err, req, res, next) => {
 });
 
 /* =========================================================================
-   13. BOOT: connect DB, auto-seed owner, start server
+   13. BOOT
 ========================================================================= */
 async function seedOwnerIfMissing() {
   const email = (process.env.OWNER_EMAIL || "").toLowerCase().trim();
