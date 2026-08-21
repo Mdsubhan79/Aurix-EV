@@ -1278,15 +1278,86 @@ export function Field({ label, value, onChange, placeholder, textarea, type = "t
 
 export function Modal({ title, onClose, children, wide }) {
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(8,10,14,0.7)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 100, backdropFilter: "blur(2px)" }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: "#171B23", borderRadius: "18px 18px 0 0", width: "100%", maxWidth: wide ? 560 : 460, maxHeight: "88vh", overflowY: "auto", padding: 22, border: "1px solid #232833", borderBottom: "none" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-          <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 17 }}>{title}</div>
-          <button onClick={onClose} style={{ background: "#1E2430", border: "none", borderRadius: 8, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-            <X size={16} color="#8B93A1" />
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(8,10,14,0.7)",
+        display: "flex",
+        alignItems: "flex-end",
+        justifyContent: "center",
+        zIndex: 1000,
+        backdropFilter: "blur(2px)",
+        paddingBottom: "72px", // space above mobile bottom navigation
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "#171B23",
+          borderRadius: "18px 18px 0 0",
+          width: "100%",
+          maxWidth: wide ? 560 : 460,
+
+          // IMPORTANT
+          height: "calc(100dvh - 72px)",
+          maxHeight: "calc(100dvh - 72px)",
+
+          display: "flex",
+          flexDirection: "column",
+
+          border: "1px solid #232833",
+          borderBottom: "none",
+          overflow: "hidden",
+        }}
+      >
+        {/* FIXED HEADER */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "18px 22px",
+            borderBottom: "1px solid #232833",
+            flexShrink: 0,
+          }}
+        >
+          <div
+            style={{
+              fontFamily: "'Space Grotesk',sans-serif",
+              fontWeight: 700,
+              fontSize: 17,
+            }}
+          >
+            {title}
+          </div>
+
+          <button
+            onClick={onClose}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "#8B93A1",
+              cursor: "pointer",
+              padding: 4,
+            }}
+          >
+            <X size={20} />
           </button>
         </div>
-        {children}
+
+        {/* SCROLLABLE CONTENT */}
+        <div
+          style={{
+            flex: 1,
+            overflowY: "auto",
+            padding: "18px 22px 32px",
+            WebkitOverflowScrolling: "touch",
+          }}
+        >
+          {children}
+        </div>
       </div>
     </div>
   );
