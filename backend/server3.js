@@ -1,4 +1,5 @@
 
+
 require("dotenv").config();
 
 const express = require("express");
@@ -11,12 +12,8 @@ const multer = require("multer");
 const { Server } = require("socket.io");
 const cloudinary = require("cloudinary").v2;
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
-const dns = require("dns");
+const { sheets, GOOGLE_SHEET_ID } = require("./googleSheets3");
 
-dns.setServers([
-  "8.8.8.8",
-  "1.1.1.1"
-]);
 /* =========================================================================
    1. CLOUDINARY CONFIG
 ========================================================================= */
@@ -102,10 +99,21 @@ const billItemSchema = new mongoose.Schema(
   {
     scooter: { type: mongoose.Schema.Types.ObjectId, ref: "Scooter" },
     name: String,
-    chassisNo: String,
-    motorNo: String,
-    actualPrice: Number,
-    sellingPrice: Number,
+    description: { type: String, default: "" },
+    chassisNo: { type: String, default: "" },
+    motorNo: { type: String, default: "" },
+    // vehicle spec fields shown on the printed invoice — all optional
+    model: { type: String, default: "" },
+    color: { type: String, default: "" },
+    batteryType: { type: String, default: "" },
+    motorPower: { type: String, default: "" },
+    range: { type: String, default: "" },
+    topSpeed: { type: String, default: "" },
+    chargingTime: { type: String, default: "" },
+    controller: { type: String, default: "" },
+    wheelSize: { type: String, default: "" },
+    actualPrice: { type: Number, default: 0 }, // cost price — internal only, never shown to customer
+    sellingPrice: { type: Number, default: 0 }, // GST-INCLUSIVE unit price shown on invoice
     qty: { type: Number, default: 1 },
   },
   { _id: false }
@@ -113,9 +121,12 @@ const billItemSchema = new mongoose.Schema(
 const billSchema = new mongoose.Schema(
   {
     owner: { type: mongoose.Schema.Types.ObjectId, ref: "Owner", required: true, index: true },
+    invoiceNumber: { type: String, default: "" },
     date: { type: Date, required: true, default: Date.now },
     customerName: { type: String, default: "" },
     customerPhone: { type: String, default: "" },
+    customerAddress: { type: String, default: "" },
+    customerAadhar: { type: String, default: "" },
     location: { type: String, default: "" },
     type: { type: String, enum: ["sale", "service", "repair"], default: "sale" },
     serviceDesc: { type: String, default: "" },
@@ -180,23 +191,38 @@ function requireAuth(req, res, next) {
 
 function getRangeDates(range) {
   const now = new Date();
-  let start;
+
   const end = new Date(now);
   end.setHours(23, 59, 59, 999);
+
+  let start;
+
   if (range === "today") {
     start = new Date(now);
     start.setHours(0, 0, 0, 0);
+
   } else if (range === "week") {
+    // Monday → Sunday
     start = new Date(now);
-    start.setDate(now.getDate() - now.getDay());
+
+    const day = start.getDay(); // Sunday=0, Monday=1, ... Saturday=6
+    const daysFromMonday = day === 0 ? 6 : day - 1;
+
+    start.setDate(start.getDate() - daysFromMonday);
     start.setHours(0, 0, 0, 0);
+
   } else if (range === "month") {
     start = new Date(now.getFullYear(), now.getMonth(), 1);
+    start.setHours(0, 0, 0, 0);
+
   } else if (range === "year") {
     start = new Date(now.getFullYear(), 0, 1);
+    start.setHours(0, 0, 0, 0);
+
   } else {
     start = new Date(0);
   }
+
   return { start, end };
 }
 
@@ -226,6 +252,18 @@ app.use(express.json({ limit: "5mb" }));
 
 app.get("/api/health", (req, res) => res.json({ ok: true, service: "voltline-server" }));
 
+/* =========================================================================
+   HELPER
+========================================================================= */
+function formatSheetDate(date) {
+  if (!date) return "";
+
+  return new Date(date).toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
 /* =========================================================================
    5. AUTH ROUTES
 ========================================================================= */
@@ -412,17 +450,51 @@ app.get(
   })
 );
 
+function computeBillTotals(body) {
+  const grandTotal = (body.items || []).reduce((s, it) => s + Number(it.sellingPrice || 0) * Number(it.qty || 1), 0);
+  const rate = Number(body.gstRate) || 0;
+  const gstAmount = rate > 0 ? +((grandTotal * rate) / (100 + rate)).toFixed(2) : 0;
+  const subtotal = +(grandTotal - gstAmount).toFixed(2);
+  const total = +grandTotal.toFixed(2);
+  return { subtotal, gstAmount, total };
+}
+
+async function nextInvoiceNumber(ownerId, dateStr) {
+  const year = new Date(dateStr || Date.now()).getFullYear();
+  const countThisYear = await Bill.countDocuments({
+    owner: ownerId,
+    invoiceNumber: { $regex: `^INV/${year}/` },
+  });
+  return `INV/${year}/${String(countThisYear + 1).padStart(4, "0")}`;
+}
+
 app.post(
   "/api/bills",
   requireAuth,
   wrap(async (req, res) => {
     const body = req.body;
-    const subtotal = (body.items || []).reduce((s, it) => s + it.sellingPrice * (it.qty || 1), 0);
-    const gstAmount = +((subtotal * (Number(body.gstRate) || 0)) / 100).toFixed(2);
-    const total = +(subtotal + gstAmount).toFixed(2);
-    const bill = await Bill.create({ ...body, owner: req.ownerId, subtotal, gstAmount, total });
+    const { subtotal, gstAmount, total } = computeBillTotals(body);
+    const invoiceNumber = await nextInvoiceNumber(req.ownerId, body.date);
+    const bill = await Bill.create({ ...body, owner: req.ownerId, subtotal, gstAmount, total, invoiceNumber });
     emitUpdate("bill:created", bill);
     res.status(201).json(bill);
+  })
+);
+
+app.put(
+  "/api/bills/:id",
+  requireAuth,
+  wrap(async (req, res) => {
+    const body = req.body;
+    const { subtotal, gstAmount, total } = computeBillTotals(body);
+    const bill = await Bill.findOneAndUpdate(
+      { _id: req.params.id, owner: req.ownerId },
+      { $set: { ...body, subtotal, gstAmount, total } },
+      { new: true }
+    );
+    if (!bill) return res.status(404).json({ message: "Bill not found." });
+    emitUpdate("bill:updated", bill);
+    res.json(bill);
   })
 );
 
@@ -523,12 +595,26 @@ app.get(
     const bills = await Bill.find({ owner, date: { $gte: start, $lte: end } });
     const expenses = await Expense.find({ owner, date: { $gte: start, $lte: end } });
 
-    const totalSales = bills.reduce((s, b) => s + b.total, 0);
+    const totalSales = bills.reduce(
+  (s, b) => s + Number(b.total || 0),
+  0
+);
     const grossProfit = bills.reduce(
-      (s, b) => s + b.items.reduce((x, it) => x + (it.sellingPrice - it.actualPrice) * it.qty, 0),
+  (s, b) =>
+    s +
+    (b.items || []).reduce(
+      (x, it) =>
+        x +
+        (Number(it.sellingPrice) - Number(it.actualPrice)) *
+          Number(it.qty || 1),
       0
-    );
-    const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0);
+    ),
+  0
+);
+    const totalExpenses = expenses.reduce(
+  (s, e) => s + Number(e.amount || 0),
+  0
+);
     const netProfit = grossProfit - totalExpenses;
 
     const byLocation = {};
@@ -554,7 +640,7 @@ app.get(
 );
 
 /* =========================================================================
-   12. 404 + ERROR HANDLING
+   12. ERROR HANDLING
 ========================================================================= */
 app.use((req, res) => {
   res.status(404).json({ message: `Route not found: ${req.method} ${req.originalUrl}` });
@@ -566,7 +652,7 @@ app.use((err, req, res, next) => {
 });
 
 /* =========================================================================
-   13. BOOT: connect DB, auto-seed owner, start server
+   13. BOOT
 ========================================================================= */
 async function seedOwnerIfMissing() {
   const email = (process.env.OWNER_EMAIL || "").toLowerCase().trim();

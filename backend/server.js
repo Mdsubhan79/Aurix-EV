@@ -1,5 +1,3 @@
-
-
 require("dotenv").config();
 
 const express = require("express");
@@ -200,7 +198,6 @@ function getRangeDates(range) {
   if (range === "today") {
     start = new Date(now);
     start.setHours(0, 0, 0, 0);
-
   } else if (range === "week") {
     // Monday → Sunday
     start = new Date(now);
@@ -210,20 +207,26 @@ function getRangeDates(range) {
 
     start.setDate(start.getDate() - daysFromMonday);
     start.setHours(0, 0, 0, 0);
-
   } else if (range === "month") {
     start = new Date(now.getFullYear(), now.getMonth(), 1);
     start.setHours(0, 0, 0, 0);
-
   } else if (range === "year") {
     start = new Date(now.getFullYear(), 0, 1);
     start.setHours(0, 0, 0, 0);
-
   } else {
     start = new Date(0);
   }
 
   return { start, end };
+}
+
+function formatSheetDate(date) {
+  if (!date) return "";
+  return new Date(date).toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 // wraps async route handlers so thrown errors reach the error middleware
@@ -252,18 +255,6 @@ app.use(express.json({ limit: "5mb" }));
 
 app.get("/api/health", (req, res) => res.json({ ok: true, service: "voltline-server" }));
 
-/* =========================================================================
-   HELPER
-========================================================================= */
-function formatSheetDate(date) {
-  if (!date) return "";
-
-  return new Date(date).toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-}
 /* =========================================================================
    5. AUTH ROUTES
 ========================================================================= */
@@ -582,7 +573,138 @@ app.delete(
 );
 
 /* =========================================================================
-   11. DASHBOARD ANALYTICS ROUTE
+   11. GOOGLE SHEETS EXPORT
+   Every click clears each tab and rewrites it fresh, so the sheet always
+   reflects the current state instead of appending duplicate rows.
+========================================================================= */
+async function ensureSheetTab(title) {
+  const meta = await sheets.spreadsheets.get({ spreadsheetId: GOOGLE_SHEET_ID });
+  const exists = meta.data.sheets.some((s) => s.properties.title === title);
+  if (!exists) {
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: GOOGLE_SHEET_ID,
+      requestBody: { requests: [{ addSheet: { properties: { title } } }] },
+    });
+  }
+}
+
+async function writeSheetTab(title, rows) {
+  await ensureSheetTab(title);
+  await sheets.spreadsheets.values.clear({
+    spreadsheetId: GOOGLE_SHEET_ID,
+    range: `${title}!A:Z`,
+  });
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: GOOGLE_SHEET_ID,
+    range: `${title}!A1`,
+    valueInputOption: "USER_ENTERED",
+    requestBody: { values: rows },
+  });
+}
+
+app.post(
+  "/api/reports/export-complete",
+  requireAuth,
+  wrap(async (req, res) => {
+    if (!GOOGLE_SHEET_ID) {
+      return res.status(500).json({ message: "GOOGLE_SHEET_ID is not configured on the server." });
+    }
+
+    const owner = req.ownerId;
+
+    const [bills, expenses, partners, scooters, business] = await Promise.all([
+      Bill.find({ owner }).sort({ date: -1 }),
+      Expense.find({ owner }).sort({ date: -1 }),
+      Partner.find({ owner }),
+      Scooter.find({ owner }),
+      Business.findOne({ owner }),
+    ]);
+
+    // ---- Bills tab (one row per item so nothing gets collapsed) ----
+    const billRows = [
+      [
+        "Invoice No", "Date", "Customer", "Phone", "Location", "Type",
+        "Item", "Qty", "Selling Price", "Amount", "Payment Mode",
+        "Subtotal", "GST %", "GST Amount", "Total",
+      ],
+    ];
+    bills.forEach((b) => {
+      const items = b.items && b.items.length ? b.items : [{}];
+      items.forEach((it) => {
+        billRows.push([
+          b.invoiceNumber || "",
+          formatSheetDate(b.date),
+          b.customerName || "",
+          b.customerPhone || "",
+          b.location || "",
+          b.type || "",
+          it.name || "",
+          it.qty || "",
+          it.sellingPrice || "",
+          Number(it.sellingPrice || 0) * Number(it.qty || 1) || "",
+          b.paymentMode || "",
+          b.subtotal || "",
+          b.gstRate || "",
+          b.gstAmount || "",
+          b.total || "",
+        ]);
+      });
+    });
+
+    // ---- Expenses tab ----
+    const expenseRows = [
+      ["Date", "Category", "Amount", "Location", "Note"],
+      ...expenses.map((e) => [formatSheetDate(e.date), e.category, e.amount, e.location || "", e.note || ""]),
+    ];
+
+    // ---- Partners tab ----
+    const partnerRows = [
+      ["Name", "Phone", "Share %"],
+      ...partners.map((p) => [p.name, p.phone || "", p.sharePercent]),
+    ];
+
+    // ---- Catalogue tab ----
+    const scooterRows = [
+      ["Name", "Chassis No", "Motor No", "Actual Price", "Selling Price", "Stock Status"],
+      ...scooters.map((s) => [s.name, s.chassisNo || "", s.motorNo || "", s.actualPrice, s.sellingPrice, s.stockStatus]),
+    ];
+
+    // ---- Summary tab ----
+    const totalSales = bills.reduce((s, b) => s + Number(b.total || 0), 0);
+    const grossProfit = bills.reduce(
+      (s, b) =>
+        s +
+        (b.items || []).reduce(
+          (x, it) => x + (Number(it.sellingPrice) - Number(it.actualPrice)) * Number(it.qty || 1),
+          0
+        ),
+      0
+    );
+    const totalExpenses = expenses.reduce((s, e) => s + Number(e.amount || 0), 0);
+    const summaryRows = [
+      ["Business", business?.name || ""],
+      ["Exported At", new Date().toLocaleString("en-IN")],
+      ["Total Bills", bills.length],
+      ["Total Sales", totalSales],
+      ["Gross Profit", grossProfit],
+      ["Total Expenses", totalExpenses],
+      ["Net Profit", grossProfit - totalExpenses],
+    ];
+
+    await Promise.all([
+      writeSheetTab("Summary", summaryRows),
+      writeSheetTab("Bills", billRows),
+      writeSheetTab("Expenses", expenseRows),
+      writeSheetTab("Partners", partnerRows),
+      writeSheetTab("Catalogue", scooterRows),
+    ]);
+
+    res.json({ message: "Complete report exported successfully to Google Sheets!" });
+  })
+);
+
+/* =========================================================================
+   12. DASHBOARD ANALYTICS ROUTE
 ========================================================================= */
 app.get(
   "/api/dashboard/summary",
@@ -595,26 +717,17 @@ app.get(
     const bills = await Bill.find({ owner, date: { $gte: start, $lte: end } });
     const expenses = await Expense.find({ owner, date: { $gte: start, $lte: end } });
 
-    const totalSales = bills.reduce(
-  (s, b) => s + Number(b.total || 0),
-  0
-);
+    const totalSales = bills.reduce((s, b) => s + Number(b.total || 0), 0);
     const grossProfit = bills.reduce(
-  (s, b) =>
-    s +
-    (b.items || []).reduce(
-      (x, it) =>
-        x +
-        (Number(it.sellingPrice) - Number(it.actualPrice)) *
-          Number(it.qty || 1),
+      (s, b) =>
+        s +
+        (b.items || []).reduce(
+          (x, it) => x + (Number(it.sellingPrice) - Number(it.actualPrice)) * Number(it.qty || 1),
+          0
+        ),
       0
-    ),
-  0
-);
-    const totalExpenses = expenses.reduce(
-  (s, e) => s + Number(e.amount || 0),
-  0
-);
+    );
+    const totalExpenses = expenses.reduce((s, e) => s + Number(e.amount || 0), 0);
     const netProfit = grossProfit - totalExpenses;
 
     const byLocation = {};
@@ -640,7 +753,7 @@ app.get(
 );
 
 /* =========================================================================
-   12. ERROR HANDLING
+   13. ERROR HANDLING
 ========================================================================= */
 app.use((req, res) => {
   res.status(404).json({ message: `Route not found: ${req.method} ${req.originalUrl}` });
@@ -652,7 +765,7 @@ app.use((err, req, res, next) => {
 });
 
 /* =========================================================================
-   13. BOOT
+   14. BOOT
 ========================================================================= */
 async function seedOwnerIfMissing() {
   const email = (process.env.OWNER_EMAIL || "").toLowerCase().trim();

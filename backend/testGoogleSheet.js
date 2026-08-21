@@ -3,7 +3,7 @@ require("dotenv").config();
 const {
   sheets,
   GOOGLE_SHEET_ID,
-} = require("./googleSheets");
+} = require("./googleSheets3");
 
 async function testGoogleSheet() {
   try {
