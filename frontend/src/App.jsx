@@ -2,10 +2,10 @@ import React, { useEffect, useMemo, useState, useCallback } from "react";
 import axios from "axios";
 import { io } from "socket.io-client";
 import "./responsive.css";
-import Billing from "./Billing";
+import Billing from "./Billing3";
 import {
   Zap, LayoutDashboard, Bike, Receipt, TrendingUp, Wallet, Users, Settings as SettingsIcon,
-  Plus, X, Trash2, Edit2, Search, Download, Share2, ChevronRight, IndianRupee, MapPin,
+  Plus, X, Trash2, Edit2, Search, Share2, ChevronRight, IndianRupee, MapPin,
 Image as ImageIcon,
 Upload,
 Check,
@@ -934,15 +934,10 @@ function Sales() {
   const total = bills.reduce((s, b) => s + b.total, 0);
   const profit = bills.reduce((s, b) => s + (b.items || []).reduce((x, it) => x + (it.sellingPrice - it.actualPrice) * it.qty, 0), 0);
 
-  const exportGoogleSheet = () => {
-    exportCompleteReport();
-  };
-
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
         <RangeTabs range={range} setRange={setRange} />
-        <button onClick={exportGoogleSheet} style={S.ghostBtn}><Download size={15} /> Export Google Sheet</button>
       </div>
       <div style={S.statGrid}>
         <StatCard icon={IndianRupee} label="Total sales" value={inr(total)} accent="#C4F135" sub={`${bills.length} bills`} />
@@ -1002,20 +997,11 @@ function Expenses() {
 
   const save = async () => { await api.post("/expenses", draft); setDraft(null); load(); };
   const remove = async (id) => { await api.delete(`/expenses/${id}`); load(); };
-  const exportGoogleSheet = () => {
-    exportCompleteReport();
-  };
-
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
         <RangeTabs range={range} setRange={setRange} />
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={exportGoogleSheet} style={S.ghostBtn}>
-  <Download size={15} />
-  Export Google Sheet
-</button>
-          
           <button onClick={() => setDraft(emptyExpense())} style={S.primaryBtn}><Plus size={16} /> Add expense</button>
         </div>
       </div>
@@ -1121,13 +1107,6 @@ function Partners({ business }) {
         <RangeTabs range={range} setRange={setRange} />
         <div style={{ display: "flex", gap: 8 }}>
           {partners.length > 0 && <button onClick={shareToAll} style={S.ghostBtn}><Share2 size={15} /> Share full report</button>}
-            <button
-    onClick={exportCompleteReport}
-    style={S.ghostBtn}
-  >
-    <Download size={15} />
-    Export Google Sheet
-  </button>
           <button onClick={() => setDraft(emptyPartner())} style={S.primaryBtn}><Plus size={16} /> Add partner</button>
         </div>
       </div>
@@ -1278,86 +1257,15 @@ export function Field({ label, value, onChange, placeholder, textarea, type = "t
 
 export function Modal({ title, onClose, children, wide }) {
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(8,10,14,0.7)",
-        display: "flex",
-        alignItems: "flex-end",
-        justifyContent: "center",
-        zIndex: 1000,
-        backdropFilter: "blur(2px)",
-        paddingBottom: "72px", // space above mobile bottom navigation
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "#171B23",
-          borderRadius: "18px 18px 0 0",
-          width: "100%",
-          maxWidth: wide ? 560 : 460,
-
-          // IMPORTANT
-          height: "calc(100dvh - 72px)",
-          maxHeight: "calc(100dvh - 72px)",
-
-          display: "flex",
-          flexDirection: "column",
-
-          border: "1px solid #232833",
-          borderBottom: "none",
-          overflow: "hidden",
-        }}
-      >
-        {/* FIXED HEADER */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            padding: "18px 22px",
-            borderBottom: "1px solid #232833",
-            flexShrink: 0,
-          }}
-        >
-          <div
-            style={{
-              fontFamily: "'Space Grotesk',sans-serif",
-              fontWeight: 700,
-              fontSize: 17,
-            }}
-          >
-            {title}
-          </div>
-
-          <button
-            onClick={onClose}
-            style={{
-              background: "transparent",
-              border: "none",
-              color: "#8B93A1",
-              cursor: "pointer",
-              padding: 4,
-            }}
-          >
-            <X size={20} />
+    <div style={{ position: "fixed", inset: 0, background: "rgba(8,10,14,0.7)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 100, backdropFilter: "blur(2px)" }} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#171B23", borderRadius: "18px 18px 0 0", width: "100%", maxWidth: wide ? 560 : 460, maxHeight: "88vh", overflowY: "auto", padding: 22, border: "1px solid #232833", borderBottom: "none" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+          <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 17 }}>{title}</div>
+          <button onClick={onClose} style={{ background: "#1E2430", border: "none", borderRadius: 8, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+            <X size={16} color="#8B93A1" />
           </button>
         </div>
-
-        {/* SCROLLABLE CONTENT */}
-        <div
-          style={{
-            flex: 1,
-            overflowY: "auto",
-            padding: "18px 22px 32px",
-            WebkitOverflowScrolling: "touch",
-          }}
-        >
-          {children}
-        </div>
+        {children}
       </div>
     </div>
   );

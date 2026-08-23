@@ -17,7 +17,7 @@ import {
   X,
   Check
 } from "lucide-react";
-import { api, socket, S, Field, Modal, Empty, inr, fmtDate, todayISO } from "./App";
+import { api, socket, S, Field, Modal, Empty, inr, fmtDate, todayISO } from "./App3";
 
 
 
@@ -194,6 +194,8 @@ export default function Billing({ business, exportCompleteReport }) {
   const [editingId, setEditingId] = useState(null);
   const [viewing, setViewing] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [exportingSheet, setExportingSheet] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   const loadBills = useCallback(() => api.get("/bills").then((res) => setBills(res.data)), []);
   const loadScooters = useCallback(() => api.get("/scooters").then((res) => setScooters(res.data)), []);
@@ -352,123 +354,102 @@ export default function Billing({ business, exportCompleteReport }) {
     window.open(phone ? `https://wa.me/${phone}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
   };
 
-const downloadPDF = async () => {
-  try {
+  // Renders #bill-preview to a canvas and saves it as a paginated A4 PDF.
+  // Takes the bill explicitly (rather than relying on closure state) since
+  // it's invoked from the "view" screen where `bill` is a local const there.
+  const downloadPDF = async (bill) => {
     const input = document.getElementById("bill-preview");
-
     if (!input) {
-      return toast.error("Invoice element not found");
+      showToast("Invoice element not found", "error");
+      return;
     }
 
-    const loadingToast = toast.loading("Generating PDF...");
+    setDownloadingPdf(true);
+    try {
+      const clone = input.cloneNode(true);
 
-    const clone = input.cloneNode(true);
+      Object.assign(clone.style, {
+        width: "794px",
+        minHeight: "auto",
+        height: "auto",
+        padding: "32px",
+        position: "fixed",
+        left: "0",
+        top: "0",
+        zIndex: "-9999",
+        opacity: "1",
+        background: "#ffffff",
+        boxShadow: "none",
+        borderRadius: "0",
+      });
 
-    Object.assign(clone.style, {
-      width: "794px",
-      minHeight: "auto",
-      height: "auto",
-      padding: "32px",
-      position: "fixed",
-      left: "0",
-      top: "0",
-      zIndex: "-9999",
-      opacity: "1",
-      background: "#ffffff",
-      boxShadow: "none",
-      borderRadius: "0",
-    });
+      document.body.appendChild(clone);
 
-    document.body.appendChild(clone);
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
-    await new Promise((resolve) => setTimeout(resolve, 500));
+      const canvas = await html2canvas(clone, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        windowWidth: clone.scrollWidth,
+        windowHeight: clone.scrollHeight,
+        scrollX: 0,
+        scrollY: 0,
+      });
 
-    const canvas = await html2canvas(clone, {
-      scale: 2,
-      useCORS: true,
-      backgroundColor: "#ffffff",
-      windowWidth: clone.scrollWidth,
-      windowHeight: clone.scrollHeight,
-      scrollX: 0,
-      scrollY: 0,
-    });
+      clone.remove();
 
-    clone.remove();
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
 
-    const pdf = new jsPDF({
-      orientation: "portrait",
-      unit: "mm",
-      format: "a4",
-    });
+      const pdfWidth = 210;
+      const pdfHeight = 297;
+      const margin = 8;
+      const contentWidth = pdfWidth - margin * 2;
+      const imageHeight = (canvas.height * contentWidth) / canvas.width;
+      const pageContentHeight = pdfHeight - margin * 2;
+      const imageData = canvas.toDataURL("image/jpeg", 0.95);
 
-    const pdfWidth = 210;
-    const pdfHeight = 297;
+      let heightLeft = imageHeight;
+      let position = margin;
 
-    const margin = 8;
-
-    const contentWidth = pdfWidth - margin * 2;
-
-    const imageHeight =
-      (canvas.height * contentWidth) / canvas.width;
-
-    const pageContentHeight =
-      pdfHeight - margin * 2;
-
-    const imageData = canvas.toDataURL(
-      "image/jpeg",
-      0.95
-    );
-
-    let heightLeft = imageHeight;
-    let position = margin;
-
-    pdf.addImage(
-      imageData,
-      "JPEG",
-      margin,
-      position,
-      contentWidth,
-      imageHeight
-    );
-
-    heightLeft -= pageContentHeight;
-
-    while (heightLeft > 0) {
-      pdf.addPage();
-
-      position =
-        margin + heightLeft - imageHeight;
-
-      pdf.addImage(
-        imageData,
-        "JPEG",
-        margin,
-        position,
-        contentWidth,
-        imageHeight
-      );
-
+      pdf.addImage(imageData, "JPEG", margin, position, contentWidth, imageHeight);
       heightLeft -= pageContentHeight;
+
+      while (heightLeft > 0) {
+        pdf.addPage();
+        position = margin + heightLeft - imageHeight;
+        pdf.addImage(imageData, "JPEG", margin, position, contentWidth, imageHeight);
+        heightLeft -= pageContentHeight;
+      }
+
+      const customerName = (bill?.customerName || "Customer").replace(/[^a-zA-Z0-9]/g, "_");
+      pdf.save(`Invoice_${customerName}_${bill?.invoiceNumber || "Invoice"}.pdf`);
+
+      showToast("PDF downloaded successfully");
+    } catch (error) {
+      console.error("PDF error:", error);
+      showToast("Failed to download PDF", "error");
+    } finally {
+      setDownloadingPdf(false);
     }
+  };
 
-    const customerName = (
-      bill.customerDetails?.name || "Customer"
-    ).replace(/[^a-zA-Z0-9]/g, "_");
-
-    pdf.save(
-      `Invoice_${customerName}_${bill.invoiceNumber || "Invoice"}.pdf`
-    );
-
-    toast.dismiss(loadingToast);
-
-    toast.success("PDF downloaded successfully");
-
-  } catch (error) {
-    console.error("PDF error:", error);
-
-    toast.error("Failed to download PDF");
-  }
-};
+  // Google Sheets export — clears and rewrites the sheet on every click,
+  // so it always reflects current data instead of appending duplicates.
+  const handleExportSheet = async () => {
+    setExportingSheet(true);
+    try {
+      await exportCompleteReport();
+    } catch {
+      // exportCompleteReport already alerts on failure
+    } finally {
+      setExportingSheet(false);
+    }
+  };
 
   /* ============================= LIST ============================= */
   if (mode === "list") {
@@ -488,11 +469,12 @@ const downloadPDF = async () => {
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
 
   <button
-    onClick={() => exportCompleteReport("month", business)}
-    style={S.ghostBtn}
+    onClick={handleExportSheet}
+    disabled={exportingSheet}
+    style={{ ...S.ghostBtn, opacity: exportingSheet ? 0.6 : 1 }}
   >
     <Download size={15} />
-    Export Excel
+    {exportingSheet ? "Exporting…" : "Export Excel"}
   </button>
 
   <button
@@ -676,651 +658,653 @@ const downloadPDF = async () => {
   }
 
   /* ============================= VIEW ============================= */
-const bill = viewing;
+  const bill = viewing;
 
-if (!bill) {
-  setMode("list");
-  return null;
-}
+  if (!bill) {
+    setMode("list");
+    return null;
+  }
 
-return (
-  <div>
-    {/* ACTION BUTTONS - NOT PRINTED */}
-    <div
-      className="no-print"
-      style={{
-        display: "flex",
-        flexWrap: "wrap",
-        justifyContent: "space-between",
-        gap: 10,
-        marginBottom: 16,
-      }}
-    >
-      <button onClick={backToList} style={S.ghostBtn}>
-        <ArrowLeft size={15} />
-        Back
-      </button>
-
+  return (
+    <div>
+      {/* ACTION BUTTONS - NOT PRINTED */}
       <div
+        className="no-print"
         style={{
           display: "flex",
-          gap: 8,
           flexWrap: "wrap",
-        }}
-      >
-        <button onClick={() => openEdit(bill)} style={S.ghostBtn}>
-          <Pencil size={14} />
-          Edit Bill
-        </button>
-
-        <button
-          onClick={() => shareWhatsApp(bill)}
-          style={{
-            ...S.primaryBtn,
-            background: "#25D366",
-            color: "#fff",
-          }}
-        >
-          <MessageCircle size={15} />
-          WhatsApp
-        </button>
-
-        <button
-          onClick={() => downloadPDF(bill)}
-          style={{
-            ...S.primaryBtn,
-            background: "#3D8BFD",
-            color: "#fff",
-          }}
-        >
-          <Download size={15} />
-          Download PDF
-        </button>
-
-        <button
-          onClick={() => window.print()}
-          style={{
-            ...S.primaryBtn,
-            background: "#12151A",
-            color: "#fff",
-            border: "1px solid #2A2F3A",
-          }}
-        >
-          <Printer size={14} />
-          Print Bill
-        </button>
-      </div>
-    </div>
-
-    {/* INVOICE */}
-   <div
-  id="bill-preview"
-  style={{
-    width: "794px",
-    maxWidth: "100%",
-    minHeight: "1123px",
-
-    margin: "0 auto",
-    padding: "20px 24px",
-
-    boxSizing: "border-box",
-
-    background: "#ffffff",
-    color: "#12151A",
-    border: "1px solid #e5e7eb",
-    borderRadius: 6,
-
-    fontFamily: "'Inter', sans-serif",
-
-    display: "flex",
-    flexDirection: "column",
-  }}
->
-    
-      {/* HEADER */}
-      <div
-        style={{
-          display: "flex",
           justifyContent: "space-between",
-          alignItems: "flex-start",
-          gap: 16,
-
-          borderBottom: "2px solid #0F4B3A",
-          paddingBottom: 12,
-          marginBottom: 14,
+          gap: 10,
+          marginBottom: 16,
         }}
       >
+        <button onClick={backToList} style={S.ghostBtn}>
+          <ArrowLeft size={15} />
+          Back
+        </button>
+
         <div
           style={{
             display: "flex",
-            gap: 10,
-            alignItems: "center",
-            minWidth: 0,
+            gap: 8,
+            flexWrap: "wrap",
           }}
         >
-          {business?.logoUrl && (
-            <img
-              src={business.logoUrl}
-              crossOrigin="anonymous"
-              alt="Business Logo"
-              style={{
-                width: 52,
-                height: 52,
-                objectFit: "contain",
-                border: "1px solid #e5e7eb",
-                borderRadius: 6,
-                flexShrink: 0,
-              }}
-            />
-          )}
+          <button onClick={() => openEdit(bill)} style={S.ghostBtn}>
+            <Pencil size={14} />
+            Edit Bill
+          </button>
 
-          <div>
-            <div
-              style={{
-                fontSize: 20,
-                fontWeight: 700,
-                color: "#0F4B3A",
-                lineHeight: 1.2,
-              }}
-            >
-              {business?.name || "Business"}
-            </div>
+          <button
+            onClick={() => shareWhatsApp(bill)}
+            style={{
+              ...S.primaryBtn,
+              background: "#25D366",
+              color: "#fff",
+            }}
+          >
+            <MessageCircle size={15} />
+            WhatsApp
+          </button>
 
-            {business?.tagline && (
-              <div
-                style={{
-                  color: "#666",
-                  fontSize: 11,
-                  marginTop: 3,
-                }}
-              >
-                {business.tagline}
-              </div>
-            )}
-          </div>
-        </div>
+          <button
+            onClick={() => downloadPDF(bill)}
+            disabled={downloadingPdf}
+            style={{
+              ...S.primaryBtn,
+              background: "#3D8BFD",
+              color: "#fff",
+              opacity: downloadingPdf ? 0.6 : 1,
+            }}
+          >
+            <Download size={15} />
+            {downloadingPdf ? "Generating…" : "Download PDF"}
+          </button>
 
-        <div
-          style={{
-            textAlign: "right",
-            fontSize: 11,
-            color: "#333",
-            flexShrink: 0,
-            lineHeight: 1.6,
-          }}
-        >
-          <div>
-            No: <b>{bill.invoiceNumber || "—"}</b>
-          </div>
-
-          <div>
-            Date: <b>{fmtDate(bill.date)}</b>
-          </div>
+          <button
+            onClick={() => window.print()}
+            style={{
+              ...S.primaryBtn,
+              background: "#12151A",
+              color: "#fff",
+              border: "1px solid #2A2F3A",
+            }}
+          >
+            <Printer size={14} />
+            Print Bill
+          </button>
         </div>
       </div>
 
-      {/* BUSINESS + CUSTOMER */}
+      {/* INVOICE */}
       <div
+        id="bill-preview"
         style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 10,
-          marginBottom: 12,
-          fontSize: 11,
+          width: "794px",
+          maxWidth: "100%",
+          minHeight: "1123px",
+
+          margin: "0 auto",
+          padding: "20px 24px",
+
+          boxSizing: "border-box",
+
+          background: "#ffffff",
+          color: "#12151A",
+          border: "1px solid #e5e7eb",
+          borderRadius: 6,
+
+          fontFamily: "'Inter', sans-serif",
+
+          display: "flex",
+          flexDirection: "column",
         }}
       >
+
+        {/* HEADER */}
         <div
           style={{
-            border: "1px solid #e5e7eb",
-            borderRadius: 6,
-            padding: 9,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: 16,
+
+            borderBottom: "2px solid #0F4B3A",
+            paddingBottom: 12,
+            marginBottom: 14,
           }}
         >
-          <b style={{ fontSize: 11.5 }}>
-            🏢 Business Details
-          </b>
-
           <div
             style={{
-              marginTop: 5,
-              lineHeight: 1.55,
+              display: "flex",
+              gap: 10,
+              alignItems: "center",
+              minWidth: 0,
             }}
           >
-            Address: {business?.address || "N/A"}
-            <br />
-
-            GSTIN: {business?.gstin || "N/A"}
-            <br />
-
-            Phone: {business?.phone || "N/A"}
-            <br />
-
-            Email: {business?.email || "N/A"}
-          </div>
-        </div>
-
-        <div
-          style={{
-            border: "1px solid #e5e7eb",
-            borderRadius: 6,
-            padding: 9,
-          }}
-        >
-          <b style={{ fontSize: 11.5 }}>
-            👤 Customer Details
-          </b>
-
-          <div
-            style={{
-              marginTop: 5,
-              lineHeight: 1.55,
-            }}
-          >
-            Name: {bill.customerName || "Walk-in"}
-            <br />
-
-            Phone: {bill.customerPhone || "N/A"}
-            <br />
-
-            {bill.customerAadhar && (
-              <>
-                Aadhar: {bill.customerAadhar}
-                <br />
-              </>
+            {business?.logoUrl && (
+              <img
+                src={business.logoUrl}
+                crossOrigin="anonymous"
+                alt="Business Logo"
+                style={{
+                  width: 52,
+                  height: 52,
+                  objectFit: "contain",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 6,
+                  flexShrink: 0,
+                }}
+              />
             )}
 
-            Address: {bill.customerAddress || "N/A"}
+            <div>
+              <div
+                style={{
+                  fontSize: 20,
+                  fontWeight: 700,
+                  color: "#0F4B3A",
+                  lineHeight: 1.2,
+                }}
+              >
+                {business?.name || "Business"}
+              </div>
+
+              {business?.tagline && (
+                <div
+                  style={{
+                    color: "#666",
+                    fontSize: 11,
+                    marginTop: 3,
+                  }}
+                >
+                  {business.tagline}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div
+            style={{
+              textAlign: "right",
+              fontSize: 11,
+              color: "#333",
+              flexShrink: 0,
+              lineHeight: 1.6,
+            }}
+          >
+            <div>
+              No: <b>{bill.invoiceNumber || "—"}</b>
+            </div>
+
+            <div>
+              Date: <b>{fmtDate(bill.date)}</b>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* VEHICLE SPECIFICATIONS */}
-      {bill.type === "sale" &&
-        (bill.items || []).some(
-          (it) =>
-            it.model ||
-            it.color ||
-            it.batteryType ||
-            it.motorPower ||
-            it.range ||
-            it.wheelSize
-        ) && (
+        {/* BUSINESS + CUSTOMER */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 10,
+            marginBottom: 12,
+            fontSize: 11,
+          }}
+        >
           <div
             style={{
               border: "1px solid #e5e7eb",
               borderRadius: 6,
               padding: 9,
-              marginBottom: 12,
             }}
           >
             <b style={{ fontSize: 11.5 }}>
-              🔧 Vehicle Specifications
+              🏢 Business Details
             </b>
 
-            {(bill.items || []).map((it, i) => (
-              <div
-                key={i}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns:
-                    "repeat(6, minmax(0, 1fr))",
-                  gap: 6,
-                  marginTop: 7,
-                  fontSize: 9.5,
-                }}
-              >
-                <div>
-                  <span style={{ color: "#777" }}>
-                    MODEL
-                  </span>
-                  <br />
-                  <b>{it.model || "N/A"}</b>
-                </div>
+            <div
+              style={{
+                marginTop: 5,
+                lineHeight: 1.55,
+              }}
+            >
+              Address: {business?.address || "N/A"}
+              <br />
 
-                <div>
-                  <span style={{ color: "#777" }}>
-                    COLOR
-                  </span>
-                  <br />
-                  <b>{it.color || "N/A"}</b>
-                </div>
+              GSTIN: {business?.gstin || "N/A"}
+              <br />
 
-                <div>
-                  <span style={{ color: "#777" }}>
-                    BATTERY
-                  </span>
-                  <br />
-                  <b>{it.batteryType || "N/A"}</b>
-                </div>
+              Phone: {business?.phone || "N/A"}
+              <br />
 
-                <div>
-                  <span style={{ color: "#777" }}>
-                    MOTOR
-                  </span>
-                  <br />
-                  <b>{it.motorPower || "N/A"}</b>
-                </div>
-
-                <div>
-                  <span style={{ color: "#777" }}>
-                    RANGE
-                  </span>
-                  <br />
-                  <b>{it.range || "N/A"}</b>
-                </div>
-
-                <div>
-                  <span style={{ color: "#777" }}>
-                    WHEEL
-                  </span>
-                  <br />
-                  <b>{it.wheelSize || "N/A"}</b>
-                </div>
-              </div>
-            ))}
+              Email: {business?.email || "N/A"}
+            </div>
           </div>
-        )}
 
-      {/* ITEMS TABLE */}
-      <table
-        style={{
-          width: "100%",
-          borderCollapse: "collapse",
-          fontSize: 10.5,
-          marginBottom: 12,
-        }}
-      >
-        <thead>
-          <tr
+          <div
             style={{
-              background: "#0F4B3A",
-              color: "#ffffff",
+              border: "1px solid #e5e7eb",
+              borderRadius: 6,
+              padding: 9,
             }}
           >
-            <th
+            <b style={{ fontSize: 11.5 }}>
+              👤 Customer Details
+            </b>
+
+            <div
               style={{
-                padding: 7,
-                textAlign: "left",
+                marginTop: 5,
+                lineHeight: 1.55,
               }}
             >
-              Item
-            </th>
+              Name: {bill.customerName || "Walk-in"}
+              <br />
 
-            <th
+              Phone: {bill.customerPhone || "N/A"}
+              <br />
+
+              {bill.customerAadhar && (
+                <>
+                  Aadhar: {bill.customerAadhar}
+                  <br />
+                </>
+              )}
+
+              Address: {bill.customerAddress || "N/A"}
+            </div>
+          </div>
+        </div>
+
+        {/* VEHICLE SPECIFICATIONS */}
+        {bill.type === "sale" &&
+          (bill.items || []).some(
+            (it) =>
+              it.model ||
+              it.color ||
+              it.batteryType ||
+              it.motorPower ||
+              it.range ||
+              it.wheelSize
+          ) && (
+            <div
               style={{
-                padding: 7,
-                textAlign: "left",
+                border: "1px solid #e5e7eb",
+                borderRadius: 6,
+                padding: 9,
+                marginBottom: 12,
               }}
             >
-              Description
-            </th>
+              <b style={{ fontSize: 11.5 }}>
+                🔧 Vehicle Specifications
+              </b>
 
-            <th
+              {(bill.items || []).map((it, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "repeat(6, minmax(0, 1fr))",
+                    gap: 6,
+                    marginTop: 7,
+                    fontSize: 9.5,
+                  }}
+                >
+                  <div>
+                    <span style={{ color: "#777" }}>
+                      MODEL
+                    </span>
+                    <br />
+                    <b>{it.model || "N/A"}</b>
+                  </div>
+
+                  <div>
+                    <span style={{ color: "#777" }}>
+                      COLOR
+                    </span>
+                    <br />
+                    <b>{it.color || "N/A"}</b>
+                  </div>
+
+                  <div>
+                    <span style={{ color: "#777" }}>
+                      BATTERY
+                    </span>
+                    <br />
+                    <b>{it.batteryType || "N/A"}</b>
+                  </div>
+
+                  <div>
+                    <span style={{ color: "#777" }}>
+                      MOTOR
+                    </span>
+                    <br />
+                    <b>{it.motorPower || "N/A"}</b>
+                  </div>
+
+                  <div>
+                    <span style={{ color: "#777" }}>
+                      RANGE
+                    </span>
+                    <br />
+                    <b>{it.range || "N/A"}</b>
+                  </div>
+
+                  <div>
+                    <span style={{ color: "#777" }}>
+                      WHEEL
+                    </span>
+                    <br />
+                    <b>{it.wheelSize || "N/A"}</b>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+        {/* ITEMS TABLE */}
+        <table
+          style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            fontSize: 10.5,
+            marginBottom: 12,
+          }}
+        >
+          <thead>
+            <tr
               style={{
-                padding: 7,
-                textAlign: "right",
+                background: "#0F4B3A",
+                color: "#ffffff",
               }}
             >
-              Qty
-            </th>
-
-            <th
-              style={{
-                padding: 7,
-                textAlign: "right",
-              }}
-            >
-              Price
-            </th>
-
-            <th
-              style={{
-                padding: 7,
-                textAlign: "right",
-              }}
-            >
-              Amount
-            </th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {(bill.items || []).map((it, i) => (
-            <tr key={i}>
-              <td
+              <th
                 style={{
-                  border: "1px solid #ddd",
                   padding: 7,
-                  fontWeight: 600,
+                  textAlign: "left",
                 }}
               >
-                {it.name}
-              </td>
+                Item
+              </th>
 
-              <td
+              <th
                 style={{
-                  border: "1px solid #ddd",
                   padding: 7,
-                  fontSize: 9.5,
-                  lineHeight: 1.4,
+                  textAlign: "left",
                 }}
               >
-                {it.chassisNo && (
-                  <>
-                    Chassis: {it.chassisNo}
-                    <br />
-                  </>
-                )}
+                Description
+              </th>
 
-                {it.motorNo && (
-                  <>
-                    Motor: {it.motorNo}
-                    <br />
-                  </>
-                )}
+              <th
+                style={{
+                  padding: 7,
+                  textAlign: "right",
+                }}
+              >
+                Qty
+              </th>
 
-                {bill.type !== "sale" &&
-                  bill.serviceDesc && (
+              <th
+                style={{
+                  padding: 7,
+                  textAlign: "right",
+                }}
+              >
+                Price
+              </th>
+
+              <th
+                style={{
+                  padding: 7,
+                  textAlign: "right",
+                }}
+              >
+                Amount
+              </th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {(bill.items || []).map((it, i) => (
+              <tr key={i}>
+                <td
+                  style={{
+                    border: "1px solid #ddd",
+                    padding: 7,
+                    fontWeight: 600,
+                  }}
+                >
+                  {it.name}
+                </td>
+
+                <td
+                  style={{
+                    border: "1px solid #ddd",
+                    padding: 7,
+                    fontSize: 9.5,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {it.chassisNo && (
                     <>
-                      {bill.serviceDesc}
+                      Chassis: {it.chassisNo}
                       <br />
                     </>
                   )}
 
-                <span
+                  {it.motorNo && (
+                    <>
+                      Motor: {it.motorNo}
+                      <br />
+                    </>
+                  )}
+
+                  {bill.type !== "sale" &&
+                    bill.serviceDesc && (
+                      <>
+                        {bill.serviceDesc}
+                        <br />
+                      </>
+                    )}
+
+                  <span
+                    style={{
+                      color: "#0F4B3A",
+                    }}
+                  >
+                    GST included
+                  </span>
+                </td>
+
+                <td
                   style={{
-                    color: "#0F4B3A",
+                    border: "1px solid #ddd",
+                    padding: 7,
+                    textAlign: "right",
                   }}
                 >
-                  GST included
-                </span>
-              </td>
+                  {it.qty}
+                </td>
 
-              <td
-                style={{
-                  border: "1px solid #ddd",
-                  padding: 7,
-                  textAlign: "right",
-                }}
-              >
-                {it.qty}
-              </td>
+                <td
+                  style={{
+                    border: "1px solid #ddd",
+                    padding: 7,
+                    textAlign: "right",
+                  }}
+                >
+                  {inr(it.sellingPrice)}
+                </td>
 
-              <td
-                style={{
-                  border: "1px solid #ddd",
-                  padding: 7,
-                  textAlign: "right",
-                }}
-              >
-                {inr(it.sellingPrice)}
-              </td>
+                <td
+                  style={{
+                    border: "1px solid #ddd",
+                    padding: 7,
+                    textAlign: "right",
+                    fontWeight: 600,
+                  }}
+                >
+                  {inr(
+                    Number(it.sellingPrice || 0) *
+                      Number(it.qty || 1)
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
 
-              <td
-                style={{
-                  border: "1px solid #ddd",
-                  padding: 7,
-                  textAlign: "right",
-                  fontWeight: 600,
-                }}
-              >
-                {inr(
-                  Number(it.sellingPrice || 0) *
-                    Number(it.qty || 1)
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {/* TOTALS */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "flex-end",
-          marginBottom: 10,
-        }}
-      >
+        {/* TOTALS */}
         <div
           style={{
-            border: "1px solid #e5e7eb",
-            borderRadius: 6,
-            padding: 10,
-            width: 250,
-            fontSize: 11,
+            display: "flex",
+            justifyContent: "flex-end",
+            marginBottom: 10,
           }}
         >
-          <div style={{ marginBottom: 6 }}>
-            <span
+          <div
+            style={{
+              border: "1px solid #e5e7eb",
+              borderRadius: 6,
+              padding: 10,
+              width: 250,
+              fontSize: 11,
+            }}
+          >
+            <div style={{ marginBottom: 6 }}>
+              <span
+                style={{
+                  background: "#eef7ee",
+                  color: "#0F4B3A",
+                  padding: "3px 8px",
+                  borderRadius: 14,
+                  fontSize: 9.5,
+                  fontWeight: 700,
+                }}
+              >
+                {(bill.paymentMode || "Cash").toUpperCase()}
+              </span>
+            </div>
+
+            <div
               style={{
-                background: "#eef7ee",
-                color: "#0F4B3A",
-                padding: "3px 8px",
-                borderRadius: 14,
-                fontSize: 9.5,
-                fontWeight: 700,
+                display: "flex",
+                justifyContent: "space-between",
+                marginBottom: 4,
               }}
             >
-              {(bill.paymentMode || "Cash").toUpperCase()}
-            </span>
-          </div>
+              <span>Subtotal</span>
+              <span>{inr(bill.subtotal)}</span>
+            </div>
 
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              marginBottom: 4,
-            }}
-          >
-            <span>Subtotal</span>
-            <span>{inr(bill.subtotal)}</span>
-          </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+              }}
+            >
+              <span>
+                GST ({Number(bill.gstRate || 0)}%)
+              </span>
 
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-            }}
-          >
-            <span>
-              GST ({Number(bill.gstRate || 0)}%)
-            </span>
+              <span>{inr(bill.gstAmount)}</span>
+            </div>
 
-            <span>{inr(bill.gstAmount)}</span>
-          </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                borderTop: "1px solid #ddd",
+                marginTop: 6,
+                paddingTop: 6,
+                fontWeight: 700,
+                color: "#0F4B3A",
+                fontSize: 13,
+              }}
+            >
+              <span>TOTAL</span>
 
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              borderTop: "1px solid #ddd",
-              marginTop: 6,
-              paddingTop: 6,
-              fontWeight: 700,
-              color: "#0F4B3A",
-              fontSize: 13,
-            }}
-          >
-            <span>TOTAL</span>
-
-            <span>{inr(bill.total)}</span>
+              <span>{inr(bill.total)}</span>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* WARRANTY */}
-      <div
-        style={{
-          border: "1px solid #f0d98c",
-          background: "#fffbea",
-          borderRadius: 6,
-          padding: 8,
-          marginTop: 8,
-          fontSize: 9.5,
-        }}
-      >
-        <b>Warranty Information</b>
-
+        {/* WARRANTY */}
         <div
           style={{
-            marginTop: 3,
-            lineHeight: 1.4,
+            border: "1px solid #f0d98c",
+            background: "#fffbea",
+            borderRadius: 6,
+            padding: 8,
+            marginTop: 8,
+            fontSize: 9.5,
           }}
         >
-          Motor, Controller & Charger Warranty: 12 Months
-          <br />
-          Battery Warranty: 12 Months
-        </div>
-      </div>
-
-      {/* FOOTER + SIGNATURE */}
-      <div
-        style={{
-          marginTop: 12,
-          fontSize: 9.5,
-          color: "#555",
-        }}
-      >
-        <div
-          style={{
-            textAlign: "center",
-          }}
-        >
-          If you have any questions about this invoice, please contact us at{" "}
-          {business?.phone || "N/A"}
+          <b>Warranty Information</b>
 
           <div
             style={{
-              fontWeight: 700,
               marginTop: 3,
+              lineHeight: 1.4,
             }}
           >
-            Thank you!
+            Motor, Controller & Charger Warranty: 12 Months
+            <br />
+            Battery Warranty: 12 Months
           </div>
         </div>
 
+        {/* FOOTER + SIGNATURE */}
         <div
           style={{
-            textAlign: "right",
             marginTop: 12,
-            lineHeight: 1.35,
+            fontSize: 9.5,
+            color: "#555",
           }}
         >
-          _____________________
-          <br />
+          <div
+            style={{
+              textAlign: "center",
+            }}
+          >
+            If you have any questions about this invoice, please contact us at{" "}
+            {business?.phone || "N/A"}
 
-          Authorized Signatory
-          <br />
+            <div
+              style={{
+                fontWeight: 700,
+                marginTop: 3,
+              }}
+            >
+              Thank you!
+            </div>
+          </div>
 
-          <b>
-            {business?.name || "Business"}
-          </b>
+          <div
+            style={{
+              textAlign: "right",
+              marginTop: 12,
+              lineHeight: 1.35,
+            }}
+          >
+            _____________________
+            <br />
+
+            Authorized Signatory
+            <br />
+
+            <b>
+              {business?.name || "Business"}
+            </b>
+          </div>
         </div>
       </div>
-    </div>
 
-    {toastNode}
-  </div>
-);
+      {toastNode}
+    </div>
+  );
 }
