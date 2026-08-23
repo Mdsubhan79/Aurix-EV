@@ -17,7 +17,7 @@ import {
   X,
   Check
 } from "lucide-react";
-import { api, socket, S, Field, Modal, Empty, inr, fmtDate, todayISO } from "./App3";
+import { api, socket, S, Field, Modal, Empty, inr, fmtDate, todayISO } from "./App";
 
 
 
@@ -178,7 +178,7 @@ function usePrintStyles() {
   }, []);
 }
 
-export default function Billing({ business, exportCompleteReport }) {
+export default function Billing({ business }) {
   usePrintStyles();
   const [toastNode, showToast] = useToast();
 
@@ -194,7 +194,6 @@ export default function Billing({ business, exportCompleteReport }) {
   const [editingId, setEditingId] = useState(null);
   const [viewing, setViewing] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [exportingSheet, setExportingSheet] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   const loadBills = useCallback(() => api.get("/bills").then((res) => setBills(res.data)), []);
@@ -438,19 +437,6 @@ export default function Billing({ business, exportCompleteReport }) {
     }
   };
 
-  // Google Sheets export — clears and rewrites the sheet on every click,
-  // so it always reflects current data instead of appending duplicates.
-  const handleExportSheet = async () => {
-    setExportingSheet(true);
-    try {
-      await exportCompleteReport();
-    } catch {
-      // exportCompleteReport already alerts on failure
-    } finally {
-      setExportingSheet(false);
-    }
-  };
-
   /* ============================= LIST ============================= */
   if (mode === "list") {
     const filtered = bills.filter((b) => {
@@ -467,15 +453,6 @@ export default function Billing({ business, exportCompleteReport }) {
             {bills.length} total
           </span>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-
-  <button
-    onClick={handleExportSheet}
-    disabled={exportingSheet}
-    style={{ ...S.ghostBtn, opacity: exportingSheet ? 0.6 : 1 }}
-  >
-    <Download size={15} />
-    {exportingSheet ? "Exporting…" : "Export to Google Sheet"}
-  </button>
 
   <button
     onClick={openCreate}

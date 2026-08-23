@@ -2,10 +2,10 @@ import React, { useEffect, useMemo, useState, useCallback } from "react";
 import axios from "axios";
 import { io } from "socket.io-client";
 import "./responsive.css";
-import Billing from "./Billing3";
+import Billing from "./Billing";
 import {
   Zap, LayoutDashboard, Bike, Receipt, TrendingUp, Wallet, Users, Settings as SettingsIcon,
-  Plus, X, Trash2, Edit2, Search, Share2, ChevronRight, IndianRupee, MapPin,
+  Plus, X, Trash2, Edit2, Search, Download, Share2, ChevronRight, IndianRupee, MapPin,
 Image as ImageIcon,
 Upload,
 Check,
@@ -406,7 +406,6 @@ function AppShell({ owner, business, setBusiness, tab, setTab, onLogout }) {
           {tab === "billing" && (
   <Billing
     business={business}
-    exportCompleteReport={exportCompleteReport}
   />
 )}
           {tab === "sales" && <Sales />}
@@ -632,6 +631,7 @@ function Dashboard({ setTab }) {
   const [range, setRange] = useState("month");
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async () => {
   setLoading(true);
@@ -677,9 +677,33 @@ function Dashboard({ setTab }) {
     };
   }, [load]);
 
+  // Single export entry point for the whole app — clears and rewrites every
+  // tab in the Google Sheet (Summary, Bills, Expenses, Partners, Catalogue)
+  // so it always reflects the current data.
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      await exportCompleteReport();
+    } catch {
+      // exportCompleteReport already alerts on failure
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div>
-      <RangeTabs range={range} setRange={setRange} />
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 4 }}>
+        <RangeTabs range={range} setRange={setRange} />
+        <button
+          onClick={handleExport}
+          disabled={exporting}
+          style={{ ...S.primaryBtn, opacity: exporting ? 0.6 : 1 }}
+        >
+          <Download size={16} />
+          {exporting ? "Exporting…" : "Export to Google Sheet"}
+        </button>
+      </div>
       {loading || !summary ? <Empty text="Loading…" /> : (
         <>
           <div style={S.statGrid}>

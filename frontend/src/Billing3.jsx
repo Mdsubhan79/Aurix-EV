@@ -474,7 +474,7 @@ export default function Billing({ business, exportCompleteReport }) {
     style={{ ...S.ghostBtn, opacity: exportingSheet ? 0.6 : 1 }}
   >
     <Download size={15} />
-    {exportingSheet ? "Exporting…" : "Export Excel"}
+    {exportingSheet ? "Exporting…" : "Export to Google Sheet"}
   </button>
 
   <button
