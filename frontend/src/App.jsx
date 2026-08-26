@@ -1154,250 +1154,119 @@ function Catalogue() {
     </div>
   );
 }
-function ScooterModal({ editing, setEditing, onClose, onSave }) {
-  const f = editing.data;
 
-  const set = (k, v) =>
-    setEditing((p) => ({
-      ...p,
-      data: {
-        ...p.data,
-        [k]: v,
-      },
-    }));
-
-  const handleImg = (e) => {
-    const file = e.target.files?.[0];
-
-    if (!file) return;
-
-    setEditing((p) => ({
-      ...p,
-      imageFile: file,
-      imagePreview: URL.createObjectURL(file),
-    }));
-  };
-
-  const canSave =
-    f.name &&
-    f.actualPrice &&
-    f.sellingPrice;
-
+function Modal({ title, children, onClose }) {
   return (
-    <Modal
-      title={editing.id ? "Edit scooter" : "Add scooter"}
-      onClose={onClose}
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 99999,
+
+        background: "rgba(5, 8, 12, 0.75)",
+        backdropFilter: "blur(4px)",
+
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+
+        padding: 12,
+        paddingBottom: "calc(12px + env(safe-area-inset-bottom))",
+
+        overflow: "hidden",
+      }}
     >
-      {/* MAIN CONTENT */}
       <div
         style={{
-          paddingBottom: 20,
+          width: "100%",
+          maxWidth: 460,
+
+          maxHeight:
+            "calc(100dvh - 24px - env(safe-area-inset-bottom))",
+
+          background: "#202631",
+          border: "1px solid #303846",
+          borderRadius: 18,
+
+          display: "flex",
+          flexDirection: "column",
+
+          overflow: "hidden",
+
+          boxShadow:
+            "0 20px 60px rgba(0,0,0,0.55)",
+
+          position: "relative",
+          zIndex: 100000,
         }}
       >
-        {/* IMAGE */}
+        {/* HEADER */}
         <div
           style={{
+            flexShrink: 0,
+
             display: "flex",
-            gap: 14,
-            marginBottom: 14,
             alignItems: "center",
+            justifyContent: "space-between",
+
+            padding: "18px 20px 14px 20px",
+
+            borderBottom:
+              "1px solid #303846",
           }}
         >
-          <div
+          <h2
             style={{
-              width: 60,
-              height: 60,
+              margin: 0,
+              fontSize: 17,
+              fontWeight: 700,
+              color: "#F2F3F0",
+            }}
+          >
+            {title}
+          </h2>
+
+          <button
+            onClick={onClose}
+            style={{
+              width: 36,
+              height: 36,
+
+              border: "none",
               borderRadius: 10,
-              background: "#1E2430",
-              overflow: "hidden",
+
+              background: "#28303D",
+              color: "#9CA6B5",
+
+              cursor: "pointer",
+
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              flexShrink: 0,
             }}
           >
-            {editing.imagePreview ? (
-              <img
-                src={editing.imagePreview}
-                alt="Scooter preview"
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "cover",
-                }}
-              />
-            ) : (
-              <ImageIcon
-                size={20}
-                color="#5A616F"
-              />
-            )}
-          </div>
-
-          <label
-            style={{
-              ...S.ghostBtn,
-              cursor: "pointer",
-              fontSize: 13,
-            }}
-          >
-            <Upload size={14} />
-            Upload image
-
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleImg}
-              style={{ display: "none" }}
-            />
-          </label>
+            <X size={19} />
+          </button>
         </div>
 
-        {/* FORM */}
-        <div style={S.formGrid}>
-          <Field
-            label="Scooter name *"
-            value={f.name}
-            onChange={(v) => set("name", v)}
-            placeholder="e.g. Volt Ryder X1"
-          />
-
-          <Field
-            label="Chassis no."
-            value={f.chassisNo}
-            onChange={(v) => set("chassisNo", v)}
-            placeholder="CH-000123"
-          />
-
-          <Field
-            label="Motor no."
-            value={f.motorNo}
-            onChange={(v) => set("motorNo", v)}
-            placeholder="MT-000456"
-          />
-
-          <Field
-            label="Warranty"
-            value={f.warranty}
-            onChange={(v) => set("warranty", v)}
-            placeholder="e.g. 2 yrs / 25,000 km"
-          />
-
-          <Field
-            label="Features"
-            value={f.features}
-            onChange={(v) => set("features", v)}
-            placeholder="LED display, reverse mode..."
-            textarea
-          />
-
-          <Field
-            label="Battery info"
-            value={f.batteryInfo}
-            onChange={(v) => set("batteryInfo", v)}
-            placeholder="60V 30Ah Lithium, removable"
-            textarea
-          />
-
-          {/* SCOOTER + BATTERY PRICE */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-              gap: 10,
-            }}
-          >
-            <Field
-              label="Scooter price"
-              value={f.scooterPrice}
-              onChange={(v) =>
-                set(
-                  "scooterPrice",
-                  v.replace(/[^0-9.]/g, "")
-                )
-              }
-              placeholder="0"
-            />
-
-            <Field
-              label="Battery price"
-              value={f.batteryPrice}
-              onChange={(v) =>
-                set(
-                  "batteryPrice",
-                  v.replace(/[^0-9.]/g, "")
-                )
-              }
-              placeholder="0"
-            />
-          </div>
-
-          {/* ACTUAL + SELLING PRICE */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-              gap: 10,
-            }}
-          >
-            <Field
-              label="Actual (cost) price *"
-              value={f.actualPrice}
-              onChange={(v) =>
-                set(
-                  "actualPrice",
-                  v.replace(/[^0-9.]/g, "")
-                )
-              }
-              placeholder="0"
-            />
-
-            <Field
-              label="Selling price *"
-              value={f.sellingPrice}
-              onChange={(v) =>
-                set(
-                  "sellingPrice",
-                  v.replace(/[^0-9.]/g, "")
-                )
-              }
-              placeholder="0"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* SAVE BUTTON */}
-      <div
-        style={{
-          
-          bottom: 0,
-          zIndex: 50,
-          background: "#202631",
-          paddingTop: 14,
-          paddingBottom: 20,
-          marginTop: 16,
-          borderTop: "1px solid #303846",
-        }}
-      >
-        <button
-          onClick={onSave}
-          disabled={!canSave}
+        {/* SCROLLABLE CONTENT */}
+        <div
           style={{
-            ...S.primaryBtn,
-            width: "100%",
-            justifyContent: "center",
-            opacity: canSave ? 1 : 0.4,
-            background: canSave
-              ? "#C4F135"
-              : "#8FAE2A",
+            flex: 1,
+            minHeight: 0,
+
+            overflowY: "auto",
+            overflowX: "hidden",
+
+            padding: "16px 20px 30px 20px",
+
+            WebkitOverflowScrolling: "touch",
           }}
         >
-          <Check size={16} />
-          Save scooter
-        </button>
+          {children}
+        </div>
       </div>
-    </Modal>
+    </div>
   );
 }
 /* =========================================================================
@@ -1748,34 +1617,302 @@ export function Field({ label, value, onChange, placeholder, textarea, type = "t
     </div>
   );
 }
+function ScooterModal({
+  editing,
+  setEditing,
+  onClose,
+  onSave,
+}) {
+  const f = editing.data;
 
-export function Modal({ title, onClose, children, wide }) {
+  const set = (key, value) => {
+    setEditing((prev) => ({
+      ...prev,
+
+      data: {
+        ...prev.data,
+        [key]: value,
+      },
+    }));
+  };
+
+  const handleImg = (e) => {
+    const file = e.target.files?.[0];
+
+    if (!file) return;
+
+    const preview = URL.createObjectURL(file);
+
+    setEditing((prev) => ({
+      ...prev,
+      imageFile: file,
+      imagePreview: preview,
+    }));
+  };
+
+  const canSave =
+    f.name &&
+    f.actualPrice &&
+    f.sellingPrice;
+
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(8,10,14,0.7)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 100, backdropFilter: "blur(2px)" }} onClick={onClose}>
+    <Modal
+      title={
+        editing.id
+          ? "Edit scooter"
+          : "Add scooter"
+      }
+      onClose={onClose}
+    >
+      {/* IMAGE */}
       <div
-        onClick={(e) => e.stopPropagation()}
         style={{
-          background: "#171B23", borderRadius: "18px 18px 0 0", width: "100%", maxWidth: wide ? 560 : 460,
-          // dvh tracks the *visual* viewport on modern mobile browsers, so this
-          // shrinks correctly when the on-screen keyboard opens instead of
-          // staying pinned to the full layout height (the old 88vh bug).
-          maxHeight: "88dvh",
-          display: "flex", flexDirection: "column",
-          border: "1px solid #232833", borderBottom: "none", overflow: "hidden",
+          display: "flex",
+          gap: 14,
+          marginBottom: 16,
+          alignItems: "center",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "22px 22px 14px", flexShrink: 0 }}>
-          <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 17 }}>{title}</div>
-          <button onClick={onClose} style={{ background: "#1E2430", border: "none", borderRadius: 8, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-            <X size={16} color="#8B93A1" />
-          </button>
+        <div
+          style={{
+            width: 60,
+            height: 60,
+
+            borderRadius: 10,
+            background: "#1E2430",
+
+            overflow: "hidden",
+
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+
+            flexShrink: 0,
+          }}
+        >
+          {editing.imagePreview ? (
+            <img
+              src={editing.imagePreview}
+              alt="Scooter"
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+              }}
+            />
+          ) : (
+            <ImageIcon
+              size={22}
+              color="#5A616F"
+            />
+          )}
         </div>
-       
-        <div style={{ overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "0 22px 22px", flex: 1, minHeight: 0 }}>
-          {children}
-        </div>
+
+        <label
+          style={{
+            ...S.ghostBtn,
+            cursor: "pointer",
+            fontSize: 13,
+          }}
+        >
+          <Upload size={14} />
+
+          Upload image
+
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handleImg}
+            style={{
+              display: "none",
+            }}
+          />
+        </label>
       </div>
-    </div>
+
+      {/* FORM */}
+      <div style={S.formGrid}>
+
+        <Field
+          label="Scooter name *"
+          value={f.name}
+          onChange={(v) =>
+            set("name", v)
+          }
+          placeholder="e.g. Volt Ryder X1"
+        />
+
+        <Field
+          label="Chassis no."
+          value={f.chassisNo}
+          onChange={(v) =>
+            set("chassisNo", v)
+          }
+          placeholder="CH-000123"
+        />
+
+        <Field
+          label="Motor no."
+          value={f.motorNo}
+          onChange={(v) =>
+            set("motorNo", v)
+          }
+          placeholder="MT-000456"
+        />
+
+        <Field
+          label="Warranty"
+          value={f.warranty}
+          onChange={(v) =>
+            set("warranty", v)
+          }
+          placeholder="e.g. 2 yrs"
+        />
+
+        <Field
+          label="Features"
+          value={f.features}
+          onChange={(v) =>
+            set("features", v)
+          }
+          placeholder="LED display, reverse mode..."
+          textarea
+        />
+
+        <Field
+          label="Battery info"
+          value={f.batteryInfo}
+          onChange={(v) =>
+            set("batteryInfo", v)
+          }
+          placeholder="60V 30Ah"
+          textarea
+        />
+
+        {/* SCOOTER + BATTERY PRICE */}
+        <div
+          style={{
+            display: "grid",
+
+            gridTemplateColumns:
+              "repeat(2, minmax(0, 1fr))",
+
+            gap: 10,
+          }}
+        >
+          <Field
+            label="Scooter price"
+            value={f.scooterPrice}
+            onChange={(v) =>
+              set(
+                "scooterPrice",
+                v.replace(/[^0-9.]/g, "")
+              )
+            }
+            placeholder="0"
+          />
+
+          <Field
+            label="Battery price"
+            value={f.batteryPrice}
+            onChange={(v) =>
+              set(
+                "batteryPrice",
+                v.replace(/[^0-9.]/g, "")
+              )
+            }
+            placeholder="0"
+          />
+        </div>
+
+        {/* ACTUAL + SELLING PRICE */}
+        <div
+          style={{
+            display: "grid",
+
+            gridTemplateColumns:
+              "repeat(2, minmax(0, 1fr))",
+
+            gap: 10,
+          }}
+        >
+          <Field
+            label="Actual (cost) price *"
+            value={f.actualPrice}
+            onChange={(v) =>
+              set(
+                "actualPrice",
+                v.replace(/[^0-9.]/g, "")
+              )
+            }
+            placeholder="0"
+          />
+
+          <Field
+            label="Selling price *"
+            value={f.sellingPrice}
+            onChange={(v) =>
+              set(
+                "sellingPrice",
+                v.replace(/[^0-9.]/g, "")
+              )
+            }
+            placeholder="0"
+          />
+        </div>
+
+      </div>
+
+      {/* SAVE BUTTON */}
+
+      <div
+        style={{
+          marginTop: 20,
+
+          paddingTop: 14,
+          paddingBottom: 14,
+
+          position: "sticky",
+
+          bottom: 0,
+
+          zIndex: 999999,
+
+          background: "#202631",
+
+          borderTop:
+            "1px solid #303846",
+        }}
+      >
+        <button
+          onClick={onSave}
+          disabled={!canSave}
+          style={{
+            ...S.primaryBtn,
+
+            width: "100%",
+
+            justifyContent: "center",
+
+            minHeight: 48,
+
+            opacity:
+              canSave
+                ? 1
+                : 0.45,
+
+            pointerEvents:
+              canSave
+                ? "auto"
+                : "none",
+          }}
+        >
+          <Check size={17} />
+
+          Save scooter
+        </button>
+      </div>
+    </Modal>
   );
 }
 
