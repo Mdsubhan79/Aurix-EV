@@ -1376,7 +1376,7 @@ function ScooterModal({ editing, setEditing, onClose, onSave }) {
           background: "#202631",
           paddingTop: 14,
           paddingBottom: 20,
-          marginTop: 8,
+          marginTop: 16,
           borderTop: "1px solid #303846",
         }}
       >
