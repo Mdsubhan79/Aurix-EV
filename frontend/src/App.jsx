@@ -1370,7 +1370,7 @@ function ScooterModal({ editing, setEditing, onClose, onSave }) {
       {/* SAVE BUTTON */}
       <div
         style={{
-          position: "sticky",
+          
           bottom: 0,
           zIndex: 50,
           background: "#202631",
