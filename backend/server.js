@@ -574,8 +574,6 @@ app.delete(
 
 /* =========================================================================
    11. GOOGLE SHEETS EXPORT
-   Every click clears each tab and rewrites it fresh, so the sheet always
-   reflects the current state instead of appending duplicate rows.
 ========================================================================= */
 async function ensureSheetTab(title) {
   const meta = await sheets.spreadsheets.get({ spreadsheetId: GOOGLE_SHEET_ID });
@@ -601,157 +599,349 @@ async function writeSheetTab(title, rows) {
     requestBody: { values: rows },
   });
 }
-
+/* =========================================================================
+   11A. COMPLETE GOOGLE SHEET EXPORT
+======================================================================== */
 app.post(
   "/api/reports/export-complete",
   requireAuth,
   wrap(async (req, res) => {
     if (!GOOGLE_SHEET_ID) {
-      return res.status(500).json({ message: "GOOGLE_SHEET_ID is not configured on the server." });
+      return res.status(500).json({
+        message: "GOOGLE_SHEET_ID is not configured on the server.",
+      });
     }
 
-    const owner = req.ownerId;
+    const ownerId = req.ownerId;
 
-    const [bills, expenses, partners, scooters, business] = await Promise.all([
-      Bill.find({ owner }).sort({ date: -1 }),
-      Expense.find({ owner }).sort({ date: -1 }),
-      Partner.find({ owner }),
-      Scooter.find({ owner }),
-      Business.findOne({ owner }),
+    const [
+      business,
+      bills,
+      expenses,
+      partners,
+      scooters
+    ] = await Promise.all([
+      Business.findOne({ owner: ownerId }),
+      Bill.find({ owner: ownerId }).sort({ date: -1 }),
+      Expense.find({ owner: ownerId }).sort({ date: -1 }),
+      Partner.find({ owner: ownerId }).sort({ createdAt: 1 }),
+      Scooter.find({ owner: ownerId }).sort({ createdAt: -1 }),
     ]);
 
-    // ---- Bills tab (one row per item so nothing gets collapsed) ----
-    const billRows = [
-      [
-        "Invoice No", "Date", "Customer", "Phone", "Location", "Type",
-        "Item", "Qty", "Selling Price", "Amount", "Payment Mode",
-        "Subtotal", "GST %", "GST Amount", "Total",
-      ],
-    ];
-    bills.forEach((b) => {
-      const items = b.items && b.items.length ? b.items : [{}];
-      items.forEach((it) => {
-        billRows.push([
-          b.invoiceNumber || "",
-          formatSheetDate(b.date),
-          b.customerName || "",
-          b.customerPhone || "",
-          b.location || "",
-          b.type || "",
-          it.name || "",
-          it.qty || "",
-          it.sellingPrice || "",
-          Number(it.sellingPrice || 0) * Number(it.qty || 1) || "",
-          b.paymentMode || "",
-          b.subtotal || "",
-          b.gstRate || "",
-          b.gstAmount || "",
-          b.total || "",
-        ]);
-      });
-    });
+    /* ============================================================
+       DASHBOARD
+    ============================================================ */
 
-    // ---- Expenses tab ----
-    const expenseRows = [
-      ["Date", "Category", "Amount", "Location", "Note"],
-      ...expenses.map((e) => [formatSheetDate(e.date), e.category, e.amount, e.location || "", e.note || ""]),
-    ];
+    const totalSales = bills.reduce(
+      (sum, bill) => sum + Number(bill.total || 0),
+      0
+    );
 
-    // ---- Partners tab ----
-    const partnerRows = [
-      ["Name", "Phone", "Share %"],
-      ...partners.map((p) => [p.name, p.phone || "", p.sharePercent]),
-    ];
-
-    // ---- Catalogue tab ----
-    const scooterRows = [
-      ["Name", "Chassis No", "Motor No", "Actual Price", "Selling Price", "Stock Status"],
-      ...scooters.map((s) => [s.name, s.chassisNo || "", s.motorNo || "", s.actualPrice, s.sellingPrice, s.stockStatus]),
-    ];
-
-    // ---- Summary tab ----
-    const totalSales = bills.reduce((s, b) => s + Number(b.total || 0), 0);
     const grossProfit = bills.reduce(
-      (s, b) =>
-        s +
-        (b.items || []).reduce(
-          (x, it) => x + (Number(it.sellingPrice) - Number(it.actualPrice)) * Number(it.qty || 1),
+      (sum, bill) =>
+        sum +
+        (bill.items || []).reduce(
+          (itemSum, item) =>
+            itemSum +
+            (Number(item.sellingPrice || 0) -
+              Number(item.actualPrice || 0)) *
+              Number(item.qty || 1),
           0
         ),
       0
     );
-    const totalExpenses = expenses.reduce((s, e) => s + Number(e.amount || 0), 0);
-    const summaryRows = [
-      ["Business", business?.name || ""],
-      ["Exported At", new Date().toLocaleString("en-IN")],
-      ["Total Bills", bills.length],
+
+    const totalExpenses = expenses.reduce(
+      (sum, expense) =>
+        sum + Number(expense.amount || 0),
+      0
+    );
+
+    const netProfit =
+      grossProfit - totalExpenses;
+
+    /* ============================================================
+       BUSINESS
+    ============================================================ */
+
+    const businessRows = [
+      [
+        "Business Name",
+        "Tagline",
+        "Address",
+        "Email",
+        "Phone",
+        "WhatsApp",
+        "GSTIN",
+        "GST Rate"
+      ],
+      [
+        business?.name || "",
+        business?.tagline || "",
+        business?.address || "",
+        business?.email || "",
+        business?.phone || "",
+        business?.whatsapp || "",
+        business?.gstin || "",
+        business?.gstRate || 0
+      ]
+    ];
+
+    /* ============================================================
+       DASHBOARD
+    ============================================================ */
+
+    const dashboardRows = [
+      ["Metric", "Value"],
       ["Total Sales", totalSales],
       ["Gross Profit", grossProfit],
       ["Total Expenses", totalExpenses],
-      ["Net Profit", grossProfit - totalExpenses],
+      ["Net Profit", netProfit],
+      ["Total Bills", bills.length],
+      ["Total Scooters", scooters.length],
+      ["Total Partners", partners.length],
     ];
 
-    await Promise.all([
-      writeSheetTab("Summary", summaryRows),
-      writeSheetTab("Bills", billRows),
-      writeSheetTab("Expenses", expenseRows),
-      writeSheetTab("Partners", partnerRows),
-      writeSheetTab("Catalogue", scooterRows),
-    ]);
+    /* ============================================================
+       CATALOGUE
+    ============================================================ */
 
-    res.json({ message: "Complete report exported successfully to Google Sheets!" });
-  })
-);
+    const catalogueRows = [
+      [
+        "Scooter Name",
+        "Chassis Number",
+        "Motor Number",
+        "Warranty",
+        "Features",
+        "Battery Info",
+        "Scooter Price",
+        "Battery Price",
+        "Actual Cost Price",
+        "Selling Price",
+        "Stock Status"
+      ],
 
-/* =========================================================================
-   12. DASHBOARD ANALYTICS ROUTE
-========================================================================= */
-app.get(
-  "/api/dashboard/summary",
-  requireAuth,
-  wrap(async (req, res) => {
-    const range = req.query.range || "today";
-    const { start, end } = getRangeDates(range);
-    const owner = req.ownerId;
+      ...scooters.map((s) => [
+        s.name || "",
+        s.chassisNo || "",
+        s.motorNo || "",
+        s.warranty || "",
+        s.features || "",
+        s.batteryInfo || "",
+        Number(s.scooterPrice || 0),
+        Number(s.batteryPrice || 0),
+        Number(s.actualPrice || 0),
+        Number(s.sellingPrice || 0),
+        s.stockStatus || "",
+      ])
+    ];
 
-    const bills = await Bill.find({ owner, date: { $gte: start, $lte: end } });
-    const expenses = await Expense.find({ owner, date: { $gte: start, $lte: end } });
+    /* ============================================================
+       BILLS
+    ============================================================ */
 
-    const totalSales = bills.reduce((s, b) => s + Number(b.total || 0), 0);
-    const grossProfit = bills.reduce(
-      (s, b) =>
-        s +
-        (b.items || []).reduce(
-          (x, it) => x + (Number(it.sellingPrice) - Number(it.actualPrice)) * Number(it.qty || 1),
-          0
-        ),
-      0
-    );
-    const totalExpenses = expenses.reduce((s, e) => s + Number(e.amount || 0), 0);
-    const netProfit = grossProfit - totalExpenses;
+    const billRows = [
+      [
+        "Invoice Number",
+        "Date",
+        "Customer Name",
+        "Customer Phone",
+        "Customer Address",
+        "Customer Aadhar",
+        "Location",
+        "Bill Type",
+        "Items",
+        "Qty",
+        "Subtotal",
+        "GST Rate",
+        "GST Amount",
+        "Total",
+        "Payment Mode"
+      ],
 
-    const byLocation = {};
-    bills.forEach((b) => {
-      const loc = b.location || "Unspecified";
-      byLocation[loc] = (byLocation[loc] || 0) + b.total;
+      ...bills.map((b) => [
+        b.invoiceNumber || "",
+        formatSheetDate(b.date),
+        b.customerName || "",
+        b.customerPhone || "",
+        b.customerAddress || "",
+        b.customerAadhar || "",
+        b.location || "",
+        b.type || "",
+        (b.items || [])
+          .map(
+            (item) =>
+              `${item.name || ""} x${item.qty || 1}`
+          )
+          .join(", "),
+        Number(b.subtotal || 0),
+        Number(b.gstRate || 0),
+        Number(b.gstAmount || 0),
+        Number(b.total || 0),
+        b.paymentMode || "",
+        Number(b.items?.[0]?.qty || 1), 
+      ])
+    ];
+
+    /* ============================================================
+       BILL ITEMS
+    ============================================================ */
+
+    const billItemRows = [
+      [
+        "Invoice Number",
+        "Customer Name",
+        "Scooter",
+        "Chassis Number",
+        "Motor Number",
+        "Description",
+        "Actual Price",
+        "Selling Price",
+        "Quantity"
+      ],
+
+      ...bills.flatMap((b) =>
+        (b.items || []).map((item) => [
+          b.invoiceNumber || "",
+          b.customerName || "",
+          item.name || "",
+          item.chassisNo || "",
+          item.motorNo || "",
+          item.description || "",
+          Number(item.actualPrice || 0),
+          Number(item.sellingPrice || 0),
+          Number(item.qty || 1),
+        ])
+      )
+    ];
+
+    /* ============================================================
+       EXPENSES
+    ============================================================ */
+
+    const expenseRows = [
+      [
+        "Date",
+        "Category",
+        "Amount",
+        "Location",
+        "Note"
+      ],
+
+      ...expenses.map((e) => [
+        formatSheetDate(e.date),
+        e.category || "",
+        Number(e.amount || 0),
+        e.location || "",
+        e.note || "",
+      ])
+    ];
+
+    /* ============================================================
+       PARTNERS
+    ============================================================ */
+
+    const partnerRows = [
+      [
+        "Name",
+        "Phone",
+        "Share Percentage"
+      ],
+
+      ...partners.map((p) => [
+        p.name || "",
+        p.phone || "",
+        Number(p.sharePercent || 0),
+      ])
+    ];
+
+    /* ============================================================
+       CLEAR OLD DATA
+    ============================================================ */
+
+    const rangesToClear = [
+      "Business!A:Z",
+      "Dashboard!A:Z",
+      "Catalogue!A:Z",
+      "Bills!A:Z",
+      "Bill Items!A:Z",
+      "Expenses!A:Z",
+      "Partners!A:Z",
+    ];
+
+    await sheets.spreadsheets.values.batchClear({
+      spreadsheetId: GOOGLE_SHEET_ID,
+      requestBody: {
+        ranges: rangesToClear,
+      },
     });
-    const locations = Object.entries(byLocation)
-      .map(([location, total]) => ({ location, total }))
-      .sort((a, b) => b.total - a.total);
+
+    /* ============================================================
+       UPDATE ALL SHEETS
+    ============================================================ */
+
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: GOOGLE_SHEET_ID,
+
+      requestBody: {
+        valueInputOption: "USER_ENTERED",
+
+        data: [
+          {
+            range: "Business!A1",
+            values: businessRows,
+          },
+
+          {
+            range: "Dashboard!A1",
+            values: dashboardRows,
+          },
+
+          {
+            range: "Catalogue!A1",
+            values: catalogueRows,
+          },
+
+          {
+            range: "Bills!A1",
+            values: billRows,
+          },
+
+          {
+            range: "Bill Items!A1",
+            values: billItemRows,
+          },
+
+          {
+            range: "Expenses!A1",
+            values: expenseRows,
+          },
+
+          {
+            range: "Partners!A1",
+            values: partnerRows,
+          },
+        ],
+      },
+    });
 
     res.json({
-      range,
-      billCount: bills.length,
-      totalSales,
-      grossProfit,
-      totalExpenses,
-      netProfit,
-      locations,
-      recentBills: bills.sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 6),
+      message: "Complete report exported successfully to Google Sheets.",
+      dashboard: {
+        totalSales,
+        grossProfit,
+        totalExpenses,
+        netProfit,
+      },
+      counts: {
+        bills: bills.length,
+        scooters: scooters.length,
+        expenses: expenses.length,
+        partners: partners.length,
+      },
     });
   })
 );
-
 /* =========================================================================
    13. ERROR HANDLING
 ========================================================================= */
