@@ -571,7 +571,133 @@ app.delete(
     res.json({ message: "Partner deleted.", id: partner._id });
   })
 );
+/* =========================================================================
+   11. DASHBOARD ANALYTICS
+======================================================================== */
 
+app.get(
+  "/api/dashboard/summary",
+  requireAuth,
+  wrap(async (req, res) => {
+    const range = req.query.range || "month";
+
+    const { start, end } = getRangeDates(range);
+
+    const owner = req.ownerId;
+
+    const bills = await Bill.find({
+      owner,
+      date: {
+        $gte: start,
+        $lte: end,
+      },
+    }).sort({ date: -1 });
+
+    const expenses = await Expense.find({
+      owner,
+      date: {
+        $gte: start,
+        $lte: end,
+      },
+    }).sort({ date: -1 });
+
+    /* =========================
+       TOTAL SALES
+    ========================= */
+
+    const totalSales = bills.reduce(
+      (sum, bill) => {
+        return sum + Number(bill.total || 0);
+      },
+      0
+    );
+
+    /* =========================
+       GROSS PROFIT
+    ========================= */
+
+    const grossProfit = bills.reduce(
+      (total, bill) => {
+        const billProfit = (bill.items || []).reduce(
+          (sum, item) => {
+            const profit =
+              (Number(item.sellingPrice || 0) -
+                Number(item.actualPrice || 0)) *
+              Number(item.qty || 1);
+
+            return sum + profit;
+          },
+          0
+        );
+
+        return total + billProfit;
+      },
+      0
+    );
+
+    /* =========================
+       TOTAL EXPENSES
+    ========================= */
+
+    const totalExpenses = expenses.reduce(
+      (sum, expense) => {
+        return sum + Number(expense.amount || 0);
+      },
+      0
+    );
+
+    /* =========================
+       NET PROFIT
+    ========================= */
+
+    const netProfit =
+      grossProfit - totalExpenses;
+
+    /* =========================
+       SALES BY LOCATION
+    ========================= */
+
+    const locationMap = {};
+
+    bills.forEach((bill) => {
+      const location =
+        bill.location || "Unspecified";
+
+      locationMap[location] =
+        (locationMap[location] || 0) +
+        Number(bill.total || 0);
+    });
+
+    const locations = Object.entries(locationMap)
+      .map(([location, total]) => ({
+        location,
+        total,
+      }))
+      .sort((a, b) => b.total - a.total);
+
+    /* =========================
+       RESPONSE
+    ========================= */
+
+    res.json({
+      range,
+
+      billCount: bills.length,
+
+      totalSales,
+
+      grossProfit,
+
+      totalExpenses,
+
+      netProfit,
+
+      locations,
+
+      recentBills: bills.slice(0, 6),
+    });
+  })
+);
 /* =========================================================================
    11. GOOGLE SHEETS EXPORT
 ========================================================================= */
