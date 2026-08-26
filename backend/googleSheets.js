@@ -1,16 +1,25 @@
 const { google } = require("googleapis");
 
 const GOOGLE_SHEET_ID = process.env.GOOGLE_SHEET_ID;
+const GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL;
+const GOOGLE_PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
 
 const auth = new google.auth.GoogleAuth({
   credentials: {
-    client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-    // .env stores the key with literal \n sequences — convert them to real newlines
-    private_key: (process.env.GOOGLE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
+    client_email: GOOGLE_CLIENT_EMAIL,
+    private_key: GOOGLE_PRIVATE_KEY,
   },
-  scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+  scopes: [
+    "https://www.googleapis.com/auth/spreadsheets",
+  ],
 });
 
-const sheets = google.sheets({ version: "v4", auth });
+const sheets = google.sheets({
+  version: "v4",
+  auth,
+});
 
-module.exports = { sheets, GOOGLE_SHEET_ID };
+module.exports = {
+  sheets,
+  GOOGLE_SHEET_ID,
+};
