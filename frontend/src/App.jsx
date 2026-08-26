@@ -677,9 +677,7 @@ function Dashboard({ setTab }) {
     };
   }, [load]);
 
-  // Single export entry point for the whole app — clears and rewrites every
-  // tab in the Google Sheet (Summary, Bills, Expenses, Partners, Catalogue)
-  // so it always reflects the current data.
+
   const handleExport = async () => {
     setExporting(true);
     try {
@@ -923,7 +921,7 @@ function ScooterModal({ editing, setEditing, onClose, onSave }) {
           <Field label="Selling price *" value={f.sellingPrice} onChange={(v) => set("sellingPrice", v.replace(/[^0-9.]/g, ""))} placeholder="0" />
         </div>
       </div>
-      <button onClick={onSave} disabled={!canSave} style={{ ...S.primaryBtn, width: "100%", marginTop: 16, opacity: canSave ? 1 : 0.4 }}>
+      <button onClick={onSave} disabled={!canSave} style={{ ...S.primaryBtn, width: "100%", marginTop: 16, opacity: canSave ? 1 : 0.4, position: "sticky", bottom: -1, zIndex: 1, background: canSave ? "#C4F135" : "#8FAE2A", boxShadow: "0 -8px 16px 4px #171B23" }}>
         <Check size={16} /> Save scooter
       </button>
     </Modal>
@@ -1057,7 +1055,7 @@ function Expenses() {
             </div>
             <Field label="Note" value={draft.note} onChange={(v) => setDraft((d) => ({ ...d, note: v }))} placeholder="Optional details" textarea />
           </div>
-          <button onClick={save} disabled={!draft.category || !draft.amount} style={{ ...S.primaryBtn, width: "100%", marginTop: 16, opacity: (!draft.category || !draft.amount) ? 0.4 : 1 }}>
+          <button onClick={save} disabled={!draft.category || !draft.amount} style={{ ...S.primaryBtn, width: "100%", marginTop: 16, opacity: (!draft.category || !draft.amount) ? 0.4 : 1, position: "sticky", bottom: -1, zIndex: 1, boxShadow: "0 -8px 16px 4px #171B23" }}>
             <Check size={16} /> Save expense
           </button>
         </Modal>
@@ -1187,7 +1185,7 @@ function Partners({ business }) {
             <Field label="WhatsApp number" value={draft.phone} onChange={(v) => setDraft((d) => ({ ...d, phone: v }))} placeholder="91 98765 43210" />
             <Field label="Profit share %" value={draft.sharePercent} onChange={(v) => setDraft((d) => ({ ...d, sharePercent: v.replace(/[^0-9.]/g, "") }))} placeholder="e.g. 25" />
           </div>
-          <button onClick={save} disabled={!draft.name || !draft.sharePercent} style={{ ...S.primaryBtn, width: "100%", marginTop: 16, opacity: (!draft.name || !draft.sharePercent) ? 0.4 : 1 }}>
+          <button onClick={save} disabled={!draft.name || !draft.sharePercent} style={{ ...S.primaryBtn, width: "100%", marginTop: 16, opacity: (!draft.name || !draft.sharePercent) ? 0.4 : 1, position: "sticky", bottom: -1, zIndex: 1, boxShadow: "0 -8px 16px 4px #171B23" }}>
             <Check size={16} /> Save partner
           </button>
         </Modal>
@@ -1264,7 +1262,7 @@ function SettingsTab({ business, setBusiness }) {
 }
 
 /* =========================================================================
-   15. SHARED UI PRIMITIVES — exported for reuse by Billing.jsx
+   15. SHARED 
 ========================================================================= */
 export function Field({ label, value, onChange, placeholder, textarea, type = "text" }) {
   return (
@@ -1282,21 +1280,38 @@ export function Field({ label, value, onChange, placeholder, textarea, type = "t
 export function Modal({ title, onClose, children, wide }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(8,10,14,0.7)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 100, backdropFilter: "blur(2px)" }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: "#171B23", borderRadius: "18px 18px 0 0", width: "100%", maxWidth: wide ? 560 : 460, maxHeight: "88vh", overflowY: "auto", padding: 22, border: "1px solid #232833", borderBottom: "none" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "#171B23", borderRadius: "18px 18px 0 0", width: "100%", maxWidth: wide ? 560 : 460,
+          // dvh tracks the *visual* viewport on modern mobile browsers, so this
+          // shrinks correctly when the on-screen keyboard opens instead of
+          // staying pinned to the full layout height (the old 88vh bug).
+          maxHeight: "88dvh",
+          display: "flex", flexDirection: "column",
+          border: "1px solid #232833", borderBottom: "none", overflow: "hidden",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "22px 22px 14px", flexShrink: 0 }}>
           <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 17 }}>{title}</div>
           <button onClick={onClose} style={{ background: "#1E2430", border: "none", borderRadius: 8, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
             <X size={16} color="#8B93A1" />
           </button>
         </div>
-        {children}
+        {/* Only this part scrolls. Any trailing "Save" button styled with
+            position: sticky + bottom: 0 (see ScooterModal / Expenses / Partners)
+            will now dock to the bottom of THIS box and stay visible at all
+            times, instead of scrolling away with the rest of the form. */}
+        <div style={{ overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "0 22px 22px", flex: 1, minHeight: 0 }}>
+          {children}
+        </div>
       </div>
     </div>
   );
 }
 
 /* =========================================================================
-   16. STYLE TOKENS (design system — CSS-in-JS) — exported for Billing.jsx
+   16. STYLE TOKEN
 ========================================================================= */
 export const S = {
   screen: { minHeight: "100vh", background: "#12151A", display: "flex", justifyContent: "center", fontFamily: "'Inter',sans-serif", color: "#F2F3F0" },

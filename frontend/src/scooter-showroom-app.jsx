@@ -7,14 +7,6 @@ import {
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
-/* ---------------------------------------------------------------
-   DESIGN TOKENS
-   bg #12151A  surface #1B1F27  surface2 #232833
-   volt (accent) #C4F135   volt-dim #8FAE2A
-   circuit (secondary accent) #3D8BFD
-   text #F2F3F0   muted #8B93A1   danger #FF6B6B  line #2A2F3A
-   display font: Space Grotesk | body: Inter | data/mono: JetBrains Mono
-----------------------------------------------------------------*/
 
 const FONTS_LINK = "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap";
 

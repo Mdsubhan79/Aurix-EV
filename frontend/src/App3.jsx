@@ -2,10 +2,10 @@ import React, { useEffect, useMemo, useState, useCallback } from "react";
 import axios from "axios";
 import { io } from "socket.io-client";
 import "./responsive.css";
-import Billing from "./Billing3";
+import Billing from "./Billing";
 import {
   Zap, LayoutDashboard, Bike, Receipt, TrendingUp, Wallet, Users, Settings as SettingsIcon,
-  Plus, X, Trash2, Edit2, Search, Share2, ChevronRight, IndianRupee, MapPin,
+  Plus, X, Trash2, Edit2, Search, Download, Share2, ChevronRight, IndianRupee, MapPin,
 Image as ImageIcon,
 Upload,
 Check,
@@ -406,7 +406,6 @@ function AppShell({ owner, business, setBusiness, tab, setTab, onLogout }) {
           {tab === "billing" && (
   <Billing
     business={business}
-    exportCompleteReport={exportCompleteReport}
   />
 )}
           {tab === "sales" && <Sales />}
@@ -632,6 +631,7 @@ function Dashboard({ setTab }) {
   const [range, setRange] = useState("month");
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async () => {
   setLoading(true);
@@ -677,9 +677,31 @@ function Dashboard({ setTab }) {
     };
   }, [load]);
 
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      await exportCompleteReport();
+    } catch {
+      // exportCompleteReport already alerts on failure
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div>
-      <RangeTabs range={range} setRange={setRange} />
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 4 }}>
+        <RangeTabs range={range} setRange={setRange} />
+        <button
+          onClick={handleExport}
+          disabled={exporting}
+          style={{ ...S.primaryBtn, opacity: exporting ? 0.6 : 1 }}
+        >
+          <Download size={16} />
+          {exporting ? "Exporting…" : "Export to Google Sheet"}
+        </button>
+      </div>
       {loading || !summary ? <Empty text="Loading…" /> : (
         <>
           <div style={S.statGrid}>
@@ -1240,7 +1262,7 @@ function SettingsTab({ business, setBusiness }) {
 }
 
 /* =========================================================================
-   15. SHARED UI PRIMITIVES — exported for reuse by Billing.jsx
+   15. SHARED 
 ========================================================================= */
 export function Field({ label, value, onChange, placeholder, textarea, type = "text" }) {
   return (
@@ -1272,7 +1294,7 @@ export function Modal({ title, onClose, children, wide }) {
 }
 
 /* =========================================================================
-   16. STYLE TOKENS (design system — CSS-in-JS) — exported for Billing.jsx
+   16. STYLE TOKEN
 ========================================================================= */
 export const S = {
   screen: { minHeight: "100vh", background: "#12151A", display: "flex", justifyContent: "center", fontFamily: "'Inter',sans-serif", color: "#F2F3F0" },
