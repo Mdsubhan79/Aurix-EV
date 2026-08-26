@@ -792,7 +792,18 @@ export function Empty({ text }) {
    9. CATALOGUE 
 ========================================================================= */
 function emptyScooter() {
-  return { name: "", chassisNo: "", motorNo: "", features: "", warranty: "", batteryInfo: "", scooterPrice: "", batteryPrice: "", actualPrice: "", sellingPrice: "" };
+  return {
+    name: "",
+    chassisNo: "",
+    motorNo: "",
+    features: "",
+    warranty: "",
+    batteryInfo: "",
+    scooterPrice: "",
+    batteryPrice: "",
+    actualPrice: "",
+    sellingPrice: "",
+  };
 }
 
 function Catalogue() {
@@ -803,16 +814,29 @@ function Catalogue() {
 
   const load = useCallback(() => {
     setLoading(true);
-    api.get("/scooters", { params: query ? { q: query } : {} }).then((res) => setScooters(res.data)).finally(() => setLoading(false));
+
+    api
+      .get("/scooters", {
+        params: query ? { q: query } : {},
+      })
+      .then((res) => setScooters(res.data))
+      .catch((err) => {
+        console.error("Failed to load scooters:", err);
+      })
+      .finally(() => setLoading(false));
   }, [query]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   useEffect(() => {
     const refresh = () => load();
+
     socket.on("scooter:created", refresh);
     socket.on("scooter:updated", refresh);
     socket.on("scooter:deleted", refresh);
+
     return () => {
       socket.off("scooter:created", refresh);
       socket.off("scooter:updated", refresh);
@@ -820,114 +844,582 @@ function Catalogue() {
     };
   }, [load]);
 
-  const openNew = () => setEditing({ id: null, data: emptyScooter(), imageFile: null, imagePreview: "" });
-  const openEdit = (s) => setEditing({ id: s._id, data: { ...s }, imageFile: null, imagePreview: s.imageUrl || "" });
-
-  const save = async () => {
-    const { id, data, imageFile } = editing;
-    let saved;
-    if (id) {
-      saved = (await api.put(`/scooters/${id}`, data)).data;
-    } else {
-      saved = (await api.post("/scooters", data)).data;
-    }
-    if (imageFile) {
-      const fd = new FormData();
-      fd.append("image", imageFile);
-      await api.post(`/scooters/${saved._id}/image`, fd, { headers: { "Content-Type": "multipart/form-data" } });
-    }
-    setEditing(null);
-    load();
+  const openNew = () => {
+    setEditing({
+      id: null,
+      data: emptyScooter(),
+      imageFile: null,
+      imagePreview: "",
+    });
   };
 
-  const remove = async (id) => { await api.delete(`/scooters/${id}`); load(); };
+  const openEdit = (s) => {
+    setEditing({
+      id: s._id,
+      data: {
+        ...emptyScooter(),
+        ...s,
+      },
+      imageFile: null,
+      imagePreview: s.imageUrl || "",
+    });
+  };
+
+  const save = async () => {
+    try {
+      if (!editing) return;
+
+      const { id, data, imageFile } = editing;
+
+      let saved;
+
+      if (id) {
+        saved = (
+          await api.put(`/scooters/${id}`, data)
+        ).data;
+      } else {
+        saved = (
+          await api.post("/scooters", data)
+        ).data;
+      }
+
+      if (imageFile) {
+        const fd = new FormData();
+
+        fd.append("image", imageFile);
+
+        await api.post(
+          `/scooters/${saved._id}/image`,
+          fd,
+          {
+            headers: {
+              "Content-Type": "multipart/form-data",
+            },
+          }
+        );
+      }
+
+      setEditing(null);
+
+      load();
+    } catch (err) {
+      console.error("Failed to save scooter:", err);
+
+      alert(
+        err?.response?.data?.message ||
+          "Failed to save scooter."
+      );
+    }
+  };
+
+  const remove = async (id) => {
+    const ok = window.confirm(
+      "Are you sure you want to delete this scooter?"
+    );
+
+    if (!ok) return;
+
+    try {
+      await api.delete(`/scooters/${id}`);
+
+      load();
+    } catch (err) {
+      console.error("Failed to delete scooter:", err);
+
+      alert(
+        err?.response?.data?.message ||
+          "Failed to delete scooter."
+      );
+    }
+  };
 
   return (
     <div>
-      <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
-        <div style={{ ...S.searchBox, flex: 1, minWidth: 180 }}>
-          <Search size={15} color="#5A616F" />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name, chassis, motor no." style={S.searchInput} />
+      <div
+        style={{
+          display: "flex",
+          gap: 10,
+          marginBottom: 16,
+          flexWrap: "wrap",
+        }}
+      >
+        <div
+          style={{
+            ...S.searchBox,
+            flex: 1,
+            minWidth: 180,
+          }}
+        >
+          <Search
+            size={15}
+            color="#5A616F"
+          />
+
+          <input
+            value={query}
+            onChange={(e) =>
+              setQuery(e.target.value)
+            }
+            placeholder="Search name, chassis, motor no."
+            style={S.searchInput}
+          />
         </div>
-        <button onClick={openNew} style={S.primaryBtn}><Plus size={16} /> Add scooter</button>
+
+        <button
+          onClick={openNew}
+          style={S.primaryBtn}
+        >
+          <Plus size={16} />
+          Add scooter
+        </button>
       </div>
 
-      {loading ? <Empty text="Loading catalogue…" /> : scooters.length === 0 ? <Empty text="No scooters in catalogue yet." /> : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 14 }}>
+      {loading ? (
+        <Empty text="Loading catalogue…" />
+      ) : scooters.length === 0 ? (
+        <Empty text="No scooters in catalogue yet." />
+      ) : (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(auto-fill,minmax(260px,1fr))",
+            gap: 14,
+          }}
+        >
           {scooters.map((s) => (
-            <div key={s._id} style={S.card}>
-              <div style={{ display: "flex", gap: 12 }}>
-                <div style={{ width: 64, height: 64, borderRadius: 10, background: "#1E2430", flexShrink: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  {s.imageUrl ? <img src={s.imageUrl} alt={s.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Bike size={22} color="#5A616F" />}
+            <div
+              key={s._id}
+              style={S.card}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  gap: 12,
+                }}
+              >
+                <div
+                  style={{
+                    width: 64,
+                    height: 64,
+                    borderRadius: 10,
+                    background: "#1E2430",
+                    flexShrink: 0,
+                    overflow: "hidden",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {s.imageUrl ? (
+                    <img
+                      src={s.imageUrl}
+                      alt={s.name}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                      }}
+                    />
+                  ) : (
+                    <Bike
+                      size={22}
+                      color="#5A616F"
+                    />
+                  )}
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 15 }}>{s.name}</div>
-                  <div style={{ color: "#5A616F", fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>Chassis {s.chassisNo || "—"}</div>
-                  <div style={{ color: "#5A616F", fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>Motor {s.motorNo || "—"}</div>
+
+                <div
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontWeight: 700,
+                      fontSize: 15,
+                    }}
+                  >
+                    {s.name}
+                  </div>
+
+                  <div
+                    style={{
+                      color: "#5A616F",
+                      fontSize: 11,
+                      fontFamily:
+                        "'JetBrains Mono',monospace",
+                    }}
+                  >
+                    Chassis{" "}
+                    {s.chassisNo || "—"}
+                  </div>
+
+                  <div
+                    style={{
+                      color: "#5A616F",
+                      fontSize: 11,
+                      fontFamily:
+                        "'JetBrains Mono',monospace",
+                    }}
+                  >
+                    Motor{" "}
+                    {s.motorNo || "—"}
+                  </div>
                 </div>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, fontSize: 12.5 }}>
-                <div style={{ color: "#8B93A1" }}>Actual: <b style={{ color: "#F2F3F0" }}>{inr(s.actualPrice)}</b></div>
-                <div style={{ color: "#8B93A1" }}>Selling: <b style={{ color: "#C4F135" }}>{inr(s.sellingPrice)}</b></div>
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent:
+                    "space-between",
+                  marginTop: 12,
+                  fontSize: 12.5,
+                  gap: 10,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div
+                  style={{
+                    color: "#8B93A1",
+                  }}
+                >
+                  Actual:{" "}
+                  <b
+                    style={{
+                      color: "#F2F3F0",
+                    }}
+                  >
+                    {inr(s.actualPrice)}
+                  </b>
+                </div>
+
+                <div
+                  style={{
+                    color: "#8B93A1",
+                  }}
+                >
+                  Selling:{" "}
+                  <b
+                    style={{
+                      color: "#C4F135",
+                    }}
+                  >
+                    {inr(s.sellingPrice)}
+                  </b>
+                </div>
               </div>
-              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                <button onClick={() => openEdit(s)} style={S.ghostBtnSm}><Edit2 size={13} /> Edit</button>
-                <button onClick={() => remove(s._id)} style={{ ...S.ghostBtnSm, color: "#FF6B6B" }}><Trash2 size={13} /> Delete</button>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  marginTop: 12,
+                }}
+              >
+                <button
+                  onClick={() => openEdit(s)}
+                  style={S.ghostBtnSm}
+                >
+                  <Edit2 size={13} />
+                  Edit
+                </button>
+
+                <button
+                  onClick={() => remove(s._id)}
+                  style={{
+                    ...S.ghostBtnSm,
+                    color: "#FF6B6B",
+                  }}
+                >
+                  <Trash2 size={13} />
+                  Delete
+                </button>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {editing && <ScooterModal editing={editing} setEditing={setEditing} onClose={() => setEditing(null)} onSave={save} />}
+      {editing && (
+        <ScooterModal
+          editing={editing}
+          setEditing={setEditing}
+          onClose={() => setEditing(null)}
+          onSave={save}
+        />
+      )}
     </div>
   );
 }
 
-function ScooterModal({ editing, setEditing, onClose, onSave }) {
+function ScooterModal({
+  editing,
+  setEditing,
+  onClose,
+  onSave,
+}) {
   const f = editing.data;
-  const set = (k, v) => setEditing((p) => ({ ...p, data: { ...p.data, [k]: v } }));
+
+  const set = (key, value) => {
+    setEditing((previous) => ({
+      ...previous,
+      data: {
+        ...previous.data,
+        [key]: value,
+      },
+    }));
+  };
+
   const handleImg = (e) => {
     const file = e.target.files?.[0];
+
     if (!file) return;
-    setEditing((p) => ({ ...p, imageFile: file, imagePreview: URL.createObjectURL(file) }));
+
+    setEditing((previous) => ({
+      ...previous,
+      imageFile: file,
+      imagePreview: URL.createObjectURL(file),
+    }));
   };
-  const canSave = f.name && f.actualPrice && f.sellingPrice;
+
+  const canSave =
+    String(f.name || "").trim() &&
+    String(f.actualPrice || "").trim() &&
+    String(f.sellingPrice || "").trim();
 
   return (
-    <Modal title={editing.id ? "Edit scooter" : "Add scooter"} onClose={onClose}>
-      <div style={{ display: "flex", gap: 14, marginBottom: 14, alignItems: "center" }}>
-        <div style={{ width: 60, height: 60, borderRadius: 10, background: "#1E2430", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-          {editing.imagePreview ? <img src={editing.imagePreview} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <ImageIcon size={20} color="#5A616F" />}
+    <Modal
+      title={
+        editing.id
+          ? "Edit scooter"
+          : "Add scooter"
+      }
+      onClose={onClose}
+    >
+      <div
+        style={{
+          display: "flex",
+          gap: 14,
+          marginBottom: 14,
+          alignItems: "center",
+        }}
+      >
+        <div
+          style={{
+            width: 60,
+            height: 60,
+            borderRadius: 10,
+            background: "#1E2430",
+            overflow: "hidden",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          {editing.imagePreview ? (
+            <img
+              src={editing.imagePreview}
+              alt="Scooter preview"
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+              }}
+            />
+          ) : (
+            <ImageIcon
+              size={20}
+              color="#5A616F"
+            />
+          )}
         </div>
-        <label style={{ ...S.ghostBtn, cursor: "pointer", fontSize: 13 }}>
-          <Upload size={14} /> Upload image
-          <input type="file" accept="image/*" onChange={handleImg} style={{ display: "none" }} />
+
+        <label
+          style={{
+            ...S.ghostBtn,
+            cursor: "pointer",
+            fontSize: 13,
+          }}
+        >
+          <Upload size={14} />
+          Upload image
+
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handleImg}
+            style={{ display: "none" }}
+          />
         </label>
       </div>
+
       <div style={S.formGrid}>
-        <Field label="Scooter name *" value={f.name} onChange={(v) => set("name", v)} placeholder="e.g. Volt Ryder X1" />
-        <Field label="Chassis no." value={f.chassisNo} onChange={(v) => set("chassisNo", v)} placeholder="CH-000123" />
-        <Field label="Motor no." value={f.motorNo} onChange={(v) => set("motorNo", v)} placeholder="MT-000456" />
-        <Field label="Warranty" value={f.warranty} onChange={(v) => set("warranty", v)} placeholder="e.g. 2 yrs / 25,000 km" />
-        <Field label="Features" value={f.features} onChange={(v) => set("features", v)} placeholder="LED display, reverse mode..." textarea />
-        <Field label="Battery info" value={f.batteryInfo} onChange={(v) => set("batteryInfo", v)} placeholder="60V 30Ah Lithium, removable" textarea />
-        <div style={{ display: "flex", gap: 10 }}>
-          <Field label="Scooter price" value={f.scooterPrice} onChange={(v) => set("scooterPrice", v.replace(/[^0-9.]/g, ""))} placeholder="0" />
-          <Field label="Battery price" value={f.batteryPrice} onChange={(v) => set("batteryPrice", v.replace(/[^0-9.]/g, ""))} placeholder="0" />
+        <Field
+          label="Scooter name *"
+          value={f.name}
+          onChange={(v) =>
+            set("name", v)
+          }
+          placeholder="e.g. Volt Ryder X1"
+        />
+
+        <Field
+          label="Chassis no."
+          value={f.chassisNo}
+          onChange={(v) =>
+            set("chassisNo", v)
+          }
+          placeholder="CH-000123"
+        />
+
+        <Field
+          label="Motor no."
+          value={f.motorNo}
+          onChange={(v) =>
+            set("motorNo", v)
+          }
+          placeholder="MT-000456"
+        />
+
+        <Field
+          label="Warranty"
+          value={f.warranty}
+          onChange={(v) =>
+            set("warranty", v)
+          }
+          placeholder="e.g. 2 yrs / 25,000 km"
+        />
+
+        <Field
+          label="Features"
+          value={f.features}
+          onChange={(v) =>
+            set("features", v)
+          }
+          placeholder="LED display, reverse mode..."
+          textarea
+        />
+
+        <Field
+          label="Battery info"
+          value={f.batteryInfo}
+          onChange={(v) =>
+            set("batteryInfo", v)
+          }
+          placeholder="60V 30Ah Lithium, removable"
+          textarea
+        />
+
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+          }}
+        >
+          <div style={{ flex: 1 }}>
+            <Field
+              label="Scooter price"
+              value={f.scooterPrice}
+              onChange={(v) =>
+                set(
+                  "scooterPrice",
+                  v.replace(/[^0-9.]/g, "")
+                )
+              }
+              placeholder="0"
+            />
+          </div>
+
+          <div style={{ flex: 1 }}>
+            <Field
+              label="Battery price"
+              value={f.batteryPrice}
+              onChange={(v) =>
+                set(
+                  "batteryPrice",
+                  v.replace(/[^0-9.]/g, "")
+                )
+              }
+              placeholder="0"
+            />
+          </div>
         </div>
-        <div style={{ display: "flex", gap: 10 }}>
-          <Field label="Actual (cost) price *" value={f.actualPrice} onChange={(v) => set("actualPrice", v.replace(/[^0-9.]/g, ""))} placeholder="0" />
-          <Field label="Selling price *" value={f.sellingPrice} onChange={(v) => set("sellingPrice", v.replace(/[^0-9.]/g, ""))} placeholder="0" />
+
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+          }}
+        >
+          <div style={{ flex: 1 }}>
+            <Field
+              label="Actual (cost) price *"
+              value={f.actualPrice}
+              onChange={(v) =>
+                set(
+                  "actualPrice",
+                  v.replace(/[^0-9.]/g, "")
+                )
+              }
+              placeholder="0"
+            />
+          </div>
+
+          <div style={{ flex: 1 }}>
+            <Field
+              label="Selling price *"
+              value={f.sellingPrice}
+              onChange={(v) =>
+                set(
+                  "sellingPrice",
+                  v.replace(/[^0-9.]/g, "")
+                )
+              }
+              placeholder="0"
+            />
+          </div>
         </div>
       </div>
-      <button onClick={onSave} disabled={!canSave} style={{ ...S.primaryBtn, width: "100%", marginTop: 16, opacity: canSave ? 1 : 0.4, position: "sticky", bottom: -1, zIndex: 1, background: canSave ? "#C4F135" : "#8FAE2A", boxShadow: "0 -8px 16px 4px #171B23" }}>
-        <Check size={16} /> Save scooter
-      </button>
+
+      {/* MOBILE SAFE SAVE BUTTON */}
+      <div
+        style={{
+          position: "sticky",
+          bottom: 0,
+          zIndex: 20,
+          background: "#171B23",
+          paddingTop: 14,
+          paddingBottom:
+            "calc(14px + env(safe-area-inset-bottom))",
+          marginTop: 16,
+        }}
+      >
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={!canSave}
+          style={{
+            ...S.primaryBtn,
+            width: "100%",
+            minHeight: 48,
+            justifyContent: "center",
+            opacity: canSave ? 1 : 0.4,
+            background: canSave
+              ? "#C4F135"
+              : "#8FAE2A",
+          }}
+        >
+          <Check size={16} />
+          Save scooter
+        </button>
+      </div>
     </Modal>
   );
 }
-
 /* =========================================================================
    11. SALES
 ========================================================================= */
