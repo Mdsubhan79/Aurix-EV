@@ -1154,173 +1154,159 @@ function Catalogue() {
     </div>
   );
 }
-
-function ScooterModal({
-  editing,
-  setEditing,
-  onClose,
-  onSave,
-}) {
+function ScooterModal({ editing, setEditing, onClose, onSave }) {
   const f = editing.data;
 
-  const set = (key, value) => {
-    setEditing((previous) => ({
-      ...previous,
+  const set = (k, v) =>
+    setEditing((p) => ({
+      ...p,
       data: {
-        ...previous.data,
-        [key]: value,
+        ...p.data,
+        [k]: v,
       },
     }));
-  };
 
   const handleImg = (e) => {
     const file = e.target.files?.[0];
 
     if (!file) return;
 
-    setEditing((previous) => ({
-      ...previous,
+    setEditing((p) => ({
+      ...p,
       imageFile: file,
       imagePreview: URL.createObjectURL(file),
     }));
   };
 
   const canSave =
-    String(f.name || "").trim() &&
-    String(f.actualPrice || "").trim() &&
-    String(f.sellingPrice || "").trim();
+    f.name &&
+    f.actualPrice &&
+    f.sellingPrice;
 
   return (
     <Modal
-      title={
-        editing.id
-          ? "Edit scooter"
-          : "Add scooter"
-      }
+      title={editing.id ? "Edit scooter" : "Add scooter"}
       onClose={onClose}
     >
+      {/* MAIN CONTENT */}
       <div
         style={{
-          display: "flex",
-          gap: 14,
-          marginBottom: 14,
-          alignItems: "center",
+          paddingBottom: 20,
         }}
       >
+        {/* IMAGE */}
         <div
           style={{
-            width: 60,
-            height: 60,
-            borderRadius: 10,
-            background: "#1E2430",
-            overflow: "hidden",
             display: "flex",
+            gap: 14,
+            marginBottom: 14,
             alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
           }}
         >
-          {editing.imagePreview ? (
-            <img
-              src={editing.imagePreview}
-              alt="Scooter preview"
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-              }}
+          <div
+            style={{
+              width: 60,
+              height: 60,
+              borderRadius: 10,
+              background: "#1E2430",
+              overflow: "hidden",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            {editing.imagePreview ? (
+              <img
+                src={editing.imagePreview}
+                alt="Scooter preview"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                }}
+              />
+            ) : (
+              <ImageIcon
+                size={20}
+                color="#5A616F"
+              />
+            )}
+          </div>
+
+          <label
+            style={{
+              ...S.ghostBtn,
+              cursor: "pointer",
+              fontSize: 13,
+            }}
+          >
+            <Upload size={14} />
+            Upload image
+
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleImg}
+              style={{ display: "none" }}
             />
-          ) : (
-            <ImageIcon
-              size={20}
-              color="#5A616F"
-            />
-          )}
+          </label>
         </div>
 
-        <label
-          style={{
-            ...S.ghostBtn,
-            cursor: "pointer",
-            fontSize: 13,
-          }}
-        >
-          <Upload size={14} />
-          Upload image
-
-          <input
-            type="file"
-            accept="image/*"
-            onChange={handleImg}
-            style={{ display: "none" }}
+        {/* FORM */}
+        <div style={S.formGrid}>
+          <Field
+            label="Scooter name *"
+            value={f.name}
+            onChange={(v) => set("name", v)}
+            placeholder="e.g. Volt Ryder X1"
           />
-        </label>
-      </div>
 
-      <div style={S.formGrid}>
-        <Field
-          label="Scooter name *"
-          value={f.name}
-          onChange={(v) =>
-            set("name", v)
-          }
-          placeholder="e.g. Volt Ryder X1"
-        />
+          <Field
+            label="Chassis no."
+            value={f.chassisNo}
+            onChange={(v) => set("chassisNo", v)}
+            placeholder="CH-000123"
+          />
 
-        <Field
-          label="Chassis no."
-          value={f.chassisNo}
-          onChange={(v) =>
-            set("chassisNo", v)
-          }
-          placeholder="CH-000123"
-        />
+          <Field
+            label="Motor no."
+            value={f.motorNo}
+            onChange={(v) => set("motorNo", v)}
+            placeholder="MT-000456"
+          />
 
-        <Field
-          label="Motor no."
-          value={f.motorNo}
-          onChange={(v) =>
-            set("motorNo", v)
-          }
-          placeholder="MT-000456"
-        />
+          <Field
+            label="Warranty"
+            value={f.warranty}
+            onChange={(v) => set("warranty", v)}
+            placeholder="e.g. 2 yrs / 25,000 km"
+          />
 
-        <Field
-          label="Warranty"
-          value={f.warranty}
-          onChange={(v) =>
-            set("warranty", v)
-          }
-          placeholder="e.g. 2 yrs / 25,000 km"
-        />
+          <Field
+            label="Features"
+            value={f.features}
+            onChange={(v) => set("features", v)}
+            placeholder="LED display, reverse mode..."
+            textarea
+          />
 
-        <Field
-          label="Features"
-          value={f.features}
-          onChange={(v) =>
-            set("features", v)
-          }
-          placeholder="LED display, reverse mode..."
-          textarea
-        />
+          <Field
+            label="Battery info"
+            value={f.batteryInfo}
+            onChange={(v) => set("batteryInfo", v)}
+            placeholder="60V 30Ah Lithium, removable"
+            textarea
+          />
 
-        <Field
-          label="Battery info"
-          value={f.batteryInfo}
-          onChange={(v) =>
-            set("batteryInfo", v)
-          }
-          placeholder="60V 30Ah Lithium, removable"
-          textarea
-        />
-
-        <div
-          style={{
-            display: "flex",
-            gap: 10,
-          }}
-        >
-          <div style={{ flex: 1 }}>
+          {/* SCOOTER + BATTERY PRICE */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+              gap: 10,
+            }}
+          >
             <Field
               label="Scooter price"
               value={f.scooterPrice}
@@ -1332,9 +1318,7 @@ function ScooterModal({
               }
               placeholder="0"
             />
-          </div>
 
-          <div style={{ flex: 1 }}>
             <Field
               label="Battery price"
               value={f.batteryPrice}
@@ -1347,15 +1331,15 @@ function ScooterModal({
               placeholder="0"
             />
           </div>
-        </div>
 
-        <div
-          style={{
-            display: "flex",
-            gap: 10,
-          }}
-        >
-          <div style={{ flex: 1 }}>
+          {/* ACTUAL + SELLING PRICE */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+              gap: 10,
+            }}
+          >
             <Field
               label="Actual (cost) price *"
               value={f.actualPrice}
@@ -1367,9 +1351,7 @@ function ScooterModal({
               }
               placeholder="0"
             />
-          </div>
 
-          <div style={{ flex: 1 }}>
             <Field
               label="Selling price *"
               value={f.sellingPrice}
@@ -1385,27 +1367,25 @@ function ScooterModal({
         </div>
       </div>
 
-      {/* MOBILE SAFE SAVE BUTTON */}
+      {/* SAVE BUTTON */}
       <div
         style={{
           position: "sticky",
           bottom: 0,
-          zIndex: 20,
-          background: "#171B23",
+          zIndex: 50,
+          background: "#202631",
           paddingTop: 14,
-          paddingBottom:
-            "calc(14px + env(safe-area-inset-bottom))",
-          marginTop: 16,
+          paddingBottom: 20,
+          marginTop: 8,
+          borderTop: "1px solid #303846",
         }}
       >
         <button
-          type="button"
           onClick={onSave}
           disabled={!canSave}
           style={{
             ...S.primaryBtn,
             width: "100%",
-            minHeight: 48,
             justifyContent: "center",
             opacity: canSave ? 1 : 0.4,
             background: canSave
@@ -1790,10 +1770,7 @@ export function Modal({ title, onClose, children, wide }) {
             <X size={16} color="#8B93A1" />
           </button>
         </div>
-        {/* Only this part scrolls. Any trailing "Save" button styled with
-            position: sticky + bottom: 0 (see ScooterModal / Expenses / Partners)
-            will now dock to the bottom of THIS box and stay visible at all
-            times, instead of scrolling away with the rest of the form. */}
+       
         <div style={{ overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "0 22px 22px", flex: 1, minHeight: 0 }}>
           {children}
         </div>
