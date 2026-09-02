@@ -1155,7 +1155,7 @@ function Catalogue() {
   );
 }
 
-function Modal({ title, children, onClose }) {
+ export function Modal({ title, children, onClose }) {
   return (
     <div
       style={{
