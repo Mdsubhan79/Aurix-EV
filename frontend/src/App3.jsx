@@ -792,18 +792,7 @@ export function Empty({ text }) {
    9. CATALOGUE 
 ========================================================================= */
 function emptyScooter() {
-  return {
-    name: "",
-    chassisNo: "",
-    motorNo: "",
-    features: "",
-    warranty: "",
-    batteryInfo: "",
-    scooterPrice: "",
-    batteryPrice: "",
-    actualPrice: "",
-    sellingPrice: "",
-  };
+  return { name: "", chassisNo: "", motorNo: "", features: "", warranty: "", batteryInfo: "", scooterPrice: "", batteryPrice: "", actualPrice: "", sellingPrice: "" };
 }
 
 function Catalogue() {
@@ -814,29 +803,16 @@ function Catalogue() {
 
   const load = useCallback(() => {
     setLoading(true);
-
-    api
-      .get("/scooters", {
-        params: query ? { q: query } : {},
-      })
-      .then((res) => setScooters(res.data))
-      .catch((err) => {
-        console.error("Failed to load scooters:", err);
-      })
-      .finally(() => setLoading(false));
+    api.get("/scooters", { params: query ? { q: query } : {} }).then((res) => setScooters(res.data)).finally(() => setLoading(false));
   }, [query]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
     const refresh = () => load();
-
     socket.on("scooter:created", refresh);
     socket.on("scooter:updated", refresh);
     socket.on("scooter:deleted", refresh);
-
     return () => {
       socket.off("scooter:created", refresh);
       socket.off("scooter:updated", refresh);
@@ -844,431 +820,114 @@ function Catalogue() {
     };
   }, [load]);
 
-  const openNew = () => {
-    setEditing({
-      id: null,
-      data: emptyScooter(),
-      imageFile: null,
-      imagePreview: "",
-    });
-  };
-
-  const openEdit = (s) => {
-    setEditing({
-      id: s._id,
-      data: {
-        ...emptyScooter(),
-        ...s,
-      },
-      imageFile: null,
-      imagePreview: s.imageUrl || "",
-    });
-  };
+  const openNew = () => setEditing({ id: null, data: emptyScooter(), imageFile: null, imagePreview: "" });
+  const openEdit = (s) => setEditing({ id: s._id, data: { ...s }, imageFile: null, imagePreview: s.imageUrl || "" });
 
   const save = async () => {
-    try {
-      if (!editing) return;
-
-      const { id, data, imageFile } = editing;
-
-      let saved;
-
-      if (id) {
-        saved = (
-          await api.put(`/scooters/${id}`, data)
-        ).data;
-      } else {
-        saved = (
-          await api.post("/scooters", data)
-        ).data;
-      }
-
-      if (imageFile) {
-        const fd = new FormData();
-
-        fd.append("image", imageFile);
-
-        await api.post(
-          `/scooters/${saved._id}/image`,
-          fd,
-          {
-            headers: {
-              "Content-Type": "multipart/form-data",
-            },
-          }
-        );
-      }
-
-      setEditing(null);
-
-      load();
-    } catch (err) {
-      console.error("Failed to save scooter:", err);
-
-      alert(
-        err?.response?.data?.message ||
-          "Failed to save scooter."
-      );
+    const { id, data, imageFile } = editing;
+    let saved;
+    if (id) {
+      saved = (await api.put(`/scooters/${id}`, data)).data;
+    } else {
+      saved = (await api.post("/scooters", data)).data;
     }
+    if (imageFile) {
+      const fd = new FormData();
+      fd.append("image", imageFile);
+      await api.post(`/scooters/${saved._id}/image`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+    }
+    setEditing(null);
+    load();
   };
 
-  const remove = async (id) => {
-    const ok = window.confirm(
-      "Are you sure you want to delete this scooter?"
-    );
-
-    if (!ok) return;
-
-    try {
-      await api.delete(`/scooters/${id}`);
-
-      load();
-    } catch (err) {
-      console.error("Failed to delete scooter:", err);
-
-      alert(
-        err?.response?.data?.message ||
-          "Failed to delete scooter."
-      );
-    }
-  };
+  const remove = async (id) => { await api.delete(`/scooters/${id}`); load(); };
 
   return (
     <div>
-      <div
-        style={{
-          display: "flex",
-          gap: 10,
-          marginBottom: 16,
-          flexWrap: "wrap",
-        }}
-      >
-        <div
-          style={{
-            ...S.searchBox,
-            flex: 1,
-            minWidth: 180,
-          }}
-        >
-          <Search
-            size={15}
-            color="#5A616F"
-          />
-
-          <input
-            value={query}
-            onChange={(e) =>
-              setQuery(e.target.value)
-            }
-            placeholder="Search name, chassis, motor no."
-            style={S.searchInput}
-          />
+      <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+        <div style={{ ...S.searchBox, flex: 1, minWidth: 180 }}>
+          <Search size={15} color="#5A616F" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name, chassis, motor no." style={S.searchInput} />
         </div>
-
-        <button
-          onClick={openNew}
-          style={S.primaryBtn}
-        >
-          <Plus size={16} />
-          Add scooter
-        </button>
+        <button onClick={openNew} style={S.primaryBtn}><Plus size={16} /> Add scooter</button>
       </div>
 
-      {loading ? (
-        <Empty text="Loading catalogue…" />
-      ) : scooters.length === 0 ? (
-        <Empty text="No scooters in catalogue yet." />
-      ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns:
-              "repeat(auto-fill,minmax(260px,1fr))",
-            gap: 14,
-          }}
-        >
+      {loading ? <Empty text="Loading catalogue…" /> : scooters.length === 0 ? <Empty text="No scooters in catalogue yet." /> : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 14 }}>
           {scooters.map((s) => (
-            <div
-              key={s._id}
-              style={S.card}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  gap: 12,
-                }}
-              >
-                <div
-                  style={{
-                    width: 64,
-                    height: 64,
-                    borderRadius: 10,
-                    background: "#1E2430",
-                    flexShrink: 0,
-                    overflow: "hidden",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {s.imageUrl ? (
-                    <img
-                      src={s.imageUrl}
-                      alt={s.name}
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                      }}
-                    />
-                  ) : (
-                    <Bike
-                      size={22}
-                      color="#5A616F"
-                    />
-                  )}
+            <div key={s._id} style={S.card}>
+              <div style={{ display: "flex", gap: 12 }}>
+                <div style={{ width: 64, height: 64, borderRadius: 10, background: "#1E2430", flexShrink: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {s.imageUrl ? <img src={s.imageUrl} alt={s.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Bike size={22} color="#5A616F" />}
                 </div>
-
-                <div
-                  style={{
-                    flex: 1,
-                    minWidth: 0,
-                  }}
-                >
-                  <div
-                    style={{
-                      fontWeight: 700,
-                      fontSize: 15,
-                    }}
-                  >
-                    {s.name}
-                  </div>
-
-                  <div
-                    style={{
-                      color: "#5A616F",
-                      fontSize: 11,
-                      fontFamily:
-                        "'JetBrains Mono',monospace",
-                    }}
-                  >
-                    Chassis{" "}
-                    {s.chassisNo || "—"}
-                  </div>
-
-                  <div
-                    style={{
-                      color: "#5A616F",
-                      fontSize: 11,
-                      fontFamily:
-                        "'JetBrains Mono',monospace",
-                    }}
-                  >
-                    Motor{" "}
-                    {s.motorNo || "—"}
-                  </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>{s.name}</div>
+                  <div style={{ color: "#5A616F", fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>Chassis {s.chassisNo || "—"}</div>
+                  <div style={{ color: "#5A616F", fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>Motor {s.motorNo || "—"}</div>
                 </div>
               </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent:
-                    "space-between",
-                  marginTop: 12,
-                  fontSize: 12.5,
-                  gap: 10,
-                  flexWrap: "wrap",
-                }}
-              >
-                <div
-                  style={{
-                    color: "#8B93A1",
-                  }}
-                >
-                  Actual:{" "}
-                  <b
-                    style={{
-                      color: "#F2F3F0",
-                    }}
-                  >
-                    {inr(s.actualPrice)}
-                  </b>
-                </div>
-
-                <div
-                  style={{
-                    color: "#8B93A1",
-                  }}
-                >
-                  Selling:{" "}
-                  <b
-                    style={{
-                      color: "#C4F135",
-                    }}
-                  >
-                    {inr(s.sellingPrice)}
-                  </b>
-                </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, fontSize: 12.5 }}>
+                <div style={{ color: "#8B93A1" }}>Actual: <b style={{ color: "#F2F3F0" }}>{inr(s.actualPrice)}</b></div>
+                <div style={{ color: "#8B93A1" }}>Selling: <b style={{ color: "#C4F135" }}>{inr(s.sellingPrice)}</b></div>
               </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  gap: 8,
-                  marginTop: 12,
-                }}
-              >
-                <button
-                  onClick={() => openEdit(s)}
-                  style={S.ghostBtnSm}
-                >
-                  <Edit2 size={13} />
-                  Edit
-                </button>
-
-                <button
-                  onClick={() => remove(s._id)}
-                  style={{
-                    ...S.ghostBtnSm,
-                    color: "#FF6B6B",
-                  }}
-                >
-                  <Trash2 size={13} />
-                  Delete
-                </button>
+              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                <button onClick={() => openEdit(s)} style={S.ghostBtnSm}><Edit2 size={13} /> Edit</button>
+                <button onClick={() => remove(s._id)} style={{ ...S.ghostBtnSm, color: "#FF6B6B" }}><Trash2 size={13} /> Delete</button>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {editing && (
-        <ScooterModal
-          editing={editing}
-          setEditing={setEditing}
-          onClose={() => setEditing(null)}
-          onSave={save}
-        />
-      )}
+      {editing && <ScooterModal editing={editing} setEditing={setEditing} onClose={() => setEditing(null)} onSave={save} />}
     </div>
   );
 }
 
-function Modal({ title, children, onClose }) {
+function ScooterModal({ editing, setEditing, onClose, onSave }) {
+  const f = editing.data;
+  const set = (k, v) => setEditing((p) => ({ ...p, data: { ...p.data, [k]: v } }));
+  const handleImg = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setEditing((p) => ({ ...p, imageFile: file, imagePreview: URL.createObjectURL(file) }));
+  };
+  const canSave = f.name && f.actualPrice && f.sellingPrice;
+
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 99999,
-
-        background: "rgba(5, 8, 12, 0.75)",
-        backdropFilter: "blur(4px)",
-
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-
-        padding: 12,
-        paddingBottom: "calc(12px + env(safe-area-inset-bottom))",
-
-        overflow: "hidden",
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 460,
-
-          maxHeight:
-            "calc(100dvh - 24px - env(safe-area-inset-bottom))",
-
-          background: "#202631",
-          border: "1px solid #303846",
-          borderRadius: 18,
-
-          display: "flex",
-          flexDirection: "column",
-
-          overflow: "hidden",
-
-          boxShadow:
-            "0 20px 60px rgba(0,0,0,0.55)",
-
-          position: "relative",
-          zIndex: 100000,
-        }}
-      >
-        {/* HEADER */}
-        <div
-          style={{
-            flexShrink: 0,
-
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-
-            padding: "18px 20px 14px 20px",
-
-            borderBottom:
-              "1px solid #303846",
-          }}
-        >
-          <h2
-            style={{
-              margin: 0,
-              fontSize: 17,
-              fontWeight: 700,
-              color: "#F2F3F0",
-            }}
-          >
-            {title}
-          </h2>
-
-          <button
-            onClick={onClose}
-            style={{
-              width: 36,
-              height: 36,
-
-              border: "none",
-              borderRadius: 10,
-
-              background: "#28303D",
-              color: "#9CA6B5",
-
-              cursor: "pointer",
-
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <X size={19} />
-          </button>
+    <Modal title={editing.id ? "Edit scooter" : "Add scooter"} onClose={onClose}>
+      <div style={{ display: "flex", gap: 14, marginBottom: 14, alignItems: "center" }}>
+        <div style={{ width: 60, height: 60, borderRadius: 10, background: "#1E2430", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          {editing.imagePreview ? <img src={editing.imagePreview} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <ImageIcon size={20} color="#5A616F" />}
         </div>
-
-        {/* SCROLLABLE CONTENT */}
-        <div
-          style={{
-            flex: 1,
-            minHeight: 0,
-
-            overflowY: "auto",
-            overflowX: "hidden",
-
-            padding: "16px 20px 30px 20px",
-
-            WebkitOverflowScrolling: "touch",
-          }}
-        >
-          {children}
+        <label style={{ ...S.ghostBtn, cursor: "pointer", fontSize: 13 }}>
+          <Upload size={14} /> Upload image
+          <input type="file" accept="image/*" onChange={handleImg} style={{ display: "none" }} />
+        </label>
+      </div>
+      <div style={S.formGrid}>
+        <Field label="Scooter name *" value={f.name} onChange={(v) => set("name", v)} placeholder="e.g. Volt Ryder X1" />
+        <Field label="Chassis no." value={f.chassisNo} onChange={(v) => set("chassisNo", v)} placeholder="CH-000123" />
+        <Field label="Motor no." value={f.motorNo} onChange={(v) => set("motorNo", v)} placeholder="MT-000456" />
+        <Field label="Warranty" value={f.warranty} onChange={(v) => set("warranty", v)} placeholder="e.g. 2 yrs / 25,000 km" />
+        <Field label="Features" value={f.features} onChange={(v) => set("features", v)} placeholder="LED display, reverse mode..." textarea />
+        <Field label="Battery info" value={f.batteryInfo} onChange={(v) => set("batteryInfo", v)} placeholder="60V 30Ah Lithium, removable" textarea />
+        <div style={{ display: "flex", gap: 10 }}>
+          <Field label="Scooter price" value={f.scooterPrice} onChange={(v) => set("scooterPrice", v.replace(/[^0-9.]/g, ""))} placeholder="0" />
+          <Field label="Battery price" value={f.batteryPrice} onChange={(v) => set("batteryPrice", v.replace(/[^0-9.]/g, ""))} placeholder="0" />
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <Field label="Actual (cost) price *" value={f.actualPrice} onChange={(v) => set("actualPrice", v.replace(/[^0-9.]/g, ""))} placeholder="0" />
+          <Field label="Selling price *" value={f.sellingPrice} onChange={(v) => set("sellingPrice", v.replace(/[^0-9.]/g, ""))} placeholder="0" />
         </div>
       </div>
-    </div>
+      <button onClick={onSave} disabled={!canSave} style={{ ...S.primaryBtn, width: "100%", marginTop: 16, opacity: canSave ? 1 : 0.4 }}>
+        <Check size={16} /> Save scooter
+      </button>
+    </Modal>
   );
 }
+
 /* =========================================================================
    11. SALES
 ========================================================================= */
@@ -1332,22 +991,10 @@ function Sales() {
   );
 }
 
-function emptyExpense() {
-  return {
-    date: todayISO(),
-    category: "",
-    amount: "",
-    note: "",
-    location: ""
-  };
-}
-
-// First word of the note becomes the expense category.
-// Example: "Sameer ne diye the" -> "Sameer"
-function getCategoryFromNote(note = "") {
-  const firstWord = String(note).trim().split(/\s+/)[0] || "";
-  return firstWord.replace(/[.,!?;:()[\]{}"'`]+$/g, "").trim();
-}
+/* =========================================================================
+   12. EXPENSES
+========================================================================= */
+function emptyExpense() { return { date: todayISO(), category: "", amount: "", note: "", location: "" }; }
 
 function Expenses() {
   const [range, setRange] = useState("month");
@@ -1357,469 +1004,189 @@ function Expenses() {
 
   const load = useCallback(() => {
     setLoading(true);
+    api.get(`/expenses?range=${range}`).then((res) => setExpenses(res.data)).finally(() => setLoading(false));
+  }, [range]);
 
-    api
-      .get(`/expenses?range=${range}`)
-      .then((res) => {
-        setExpenses(Array.isArray(res.data) ? res.data : []);
-      })
-      .catch((err) => {
-        console.error("Failed to load expenses:", err);
-        setExpenses([]);
-      })
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const refresh = () => load();
+    socket.on("expense:created", refresh);
+    socket.on("expense:deleted", refresh);
+    return () => { socket.off("expense:created", refresh); socket.off("expense:deleted", refresh); };
+  }, [load]);
+
+  const total = expenses.reduce((s, e) => s + Number(e.amount), 0);
+
+  const save = async () => { await api.post("/expenses", draft); setDraft(null); load(); };
+  const remove = async (id) => { await api.delete(`/expenses/${id}`); load(); };
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
+        <RangeTabs range={range} setRange={setRange} />
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => setDraft(emptyExpense())} style={S.primaryBtn}><Plus size={16} /> Add expense</button>
+        </div>
+      </div>
+      <StatCard icon={Wallet} label={`Total expenses · ${RANGE_LABEL[range]}`} value={inr(total)} accent="#FF6B6B" />
+
+      <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+        {loading ? <Empty text="Loading…" /> : expenses.length === 0 ? <Empty text="No expenses recorded." /> : expenses.map((e) => (
+          <div key={e._id} style={{ ...S.card, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px" }}>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 13.5 }}>{e.category}</div>
+              <div style={{ color: "#5A616F", fontSize: 11.5 }}>{fmtDate(e.date)} {e.location ? "· " + e.location : ""} {e.note ? "· " + e.note : ""}</div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ fontFamily: "'JetBrains Mono',monospace", fontWeight: 700, color: "#FF6B6B" }}>{inr(e.amount)}</div>
+              <button onClick={() => remove(e._id)} style={S.iconBtn}><Trash2 size={14} /></button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {draft && (
+        <Modal title="Add expense" onClose={() => setDraft(null)}>
+          <div style={S.formGrid}>
+            <Field label="Category *" value={draft.category} onChange={(v) => setDraft((d) => ({ ...d, category: v }))} placeholder="e.g. Rent, Salary, Parts, Electricity" />
+            <Field label="Amount *" value={draft.amount} onChange={(v) => setDraft((d) => ({ ...d, amount: v.replace(/[^0-9.]/g, "") }))} placeholder="0" />
+            <div style={{ display: "flex", gap: 10 }}>
+              <Field label="Date" type="date" value={draft.date} onChange={(v) => setDraft((d) => ({ ...d, date: v }))} />
+              <Field label="Location" value={draft.location} onChange={(v) => setDraft((d) => ({ ...d, location: v }))} placeholder="e.g. Main Showroom" />
+            </div>
+            <Field label="Note" value={draft.note} onChange={(v) => setDraft((d) => ({ ...d, note: v }))} placeholder="Optional details" textarea />
+          </div>
+          <button onClick={save} disabled={!draft.category || !draft.amount} style={{ ...S.primaryBtn, width: "100%", marginTop: 16, opacity: (!draft.category || !draft.amount) ? 0.4 : 1 }}>
+            <Check size={16} /> Save expense
+          </button>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================================
+   13. PARTNERS — profit sharing + WhatsApp
+========================================================================= */
+function emptyPartner() { return { name: "", phone: "", sharePercent: "" }; }
+
+function Partners({ business }) {
+  const [range, setRange] = useState("month");
+  const [partners, setPartners] = useState([]);
+  const [bills, setBills] = useState([]);
+  const [expenses, setExpenses] = useState([]);
+  const [draft, setDraft] = useState(null);
+  const [loading, setLoading] = useState(true);
+  // Reinvestment is set aside from net profit before splitting between partners.
+  // Kept per range in local state (not persisted) so it's easy to adjust before sharing.
+  const [reinvest, setReinvest] = useState({});
+
+  const load = useCallback(() => {
+    setLoading(true);
+    Promise.all([api.get("/partners"), api.get(`/bills?range=${range}`), api.get(`/expenses?range=${range}`)])
+      .then(([p, b, e]) => { setPartners(p.data); setBills(b.data); setExpenses(e.data); })
       .finally(() => setLoading(false));
   }, [range]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
+  useEffect(() => { load(); }, [load]);
   useEffect(() => {
     const refresh = () => load();
-
-    socket.on("expense:created", refresh);
-    socket.on("expense:updated", refresh);
-    socket.on("expense:deleted", refresh);
-
-    return () => {
-      socket.off("expense:created", refresh);
-      socket.off("expense:updated", refresh);
-      socket.off("expense:deleted", refresh);
-    };
+    ["partner:created", "partner:deleted", "bill:created", "bill:updated", "bill:deleted", "expense:created", "expense:deleted"].forEach((ev) => socket.on(ev, refresh));
+    return () => { ["partner:created", "partner:deleted", "bill:created", "bill:updated", "bill:deleted", "expense:created", "expense:deleted"].forEach((ev) => socket.off(ev, refresh)); };
   }, [load]);
 
-  const total = expenses.reduce(
-    (sum, expense) => sum + Number(expense.amount || 0),
-    0
-  );
+  const sales = bills.reduce((s, b) => s + b.total, 0);
+  const grossProfit = bills.reduce((s, b) => s + (b.items || []).reduce((x, it) => x + (it.sellingPrice - it.actualPrice) * it.qty, 0), 0);
+  const expTotal = expenses.reduce((s, e) => s + Number(e.amount), 0);
+  const netProfit = grossProfit - expTotal;
+  const reinvestAmount = Math.max(0, Number(reinvest[range] || 0));
+  const distributable = Math.max(0, netProfit - reinvestAmount);
 
-  // Existing categories are available as suggestions.
-  const categories = useMemo(() => {
-    return Array.from(
-      new Set(
-        expenses
-          .map((e) => String(e.category || "").trim())
-          .filter(Boolean)
-      )
-    ).sort((a, b) => a.localeCompare(b));
-  }, [expenses]);
+  const save = async () => { await api.post("/partners", draft); setDraft(null); load(); };
+  const remove = async (id) => { await api.delete(`/partners/${id}`); load(); };
 
-  // Group all expenses by category.
-  const groupedExpenses = useMemo(() => {
-    const groups = {};
-
-    expenses.forEach((expense) => {
-      const category =
-        String(expense.category || "").trim() || "Uncategorized";
-
-      if (!groups[category]) {
-        groups[category] = {
-          items: [],
-          total: 0
-        };
-      }
-
-      groups[category].items.push(expense);
-      groups[category].total += Number(expense.amount || 0);
-    });
-
-    return Object.entries(groups).sort((a, b) =>
-      a[0].localeCompare(b[0])
-    );
-  }, [expenses]);
-
-  const updateDraft = (key, value) => {
-    setDraft((current) => {
-      if (!current) return current;
-
-      const next = {
-        ...current,
-        [key]: value
-      };
-
-      // As soon as the note starts with a word, use that word as category.
-      if (key === "note") {
-        const autoCategory = getCategoryFromNote(value);
-
-        if (autoCategory) {
-          next.category = autoCategory;
-        }
-      }
-
-      return next;
-    });
+  const shareToAll = () => {
+    let msg = `*${business?.name || "Business"} — ${RANGE_LABEL[range]} Report*\n\n`;
+    msg += `Total Sales: ${inr(sales)}\nGross Profit: ${inr(grossProfit)}\nExpenses: ${inr(expTotal)}\nNet Profit: ${inr(netProfit)}\n`;
+    if (reinvestAmount > 0) msg += `Reinvestment set aside: ${inr(reinvestAmount)}\n`;
+    msg += `*Distributable Profit: ${inr(distributable)}*\n\n*Partner Shares:*\n`;
+    partners.forEach((p) => { msg += `${p.name} (${p.sharePercent}%): ${inr(distributable * (Number(p.sharePercent) || 0) / 100)}\n`; });
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
-  const save = async () => {
-    if (!draft) return;
-
-    const note = String(draft.note || "").trim();
-    const autoCategory = getCategoryFromNote(note);
-
-    const payload = {
-      ...draft,
-      category:
-        autoCategory ||
-        String(draft.category || "").trim()
-    };
-
-    if (!payload.category) {
-      alert("Please enter a category or write a note.");
-      return;
-    }
-
-    if (!payload.amount || Number(payload.amount) <= 0) {
-      alert("Please enter a valid amount.");
-      return;
-    }
-
-    try {
-      await api.post("/expenses", payload);
-      setDraft(null);
-      load();
-    } catch (err) {
-      console.error("Failed to save expense:", err);
-      alert(
-        err?.response?.data?.message ||
-        "Failed to save expense."
-      );
-    }
-  };
-
-  const remove = async (id) => {
-    if (!window.confirm("Are you sure you want to delete this expense?")) {
-      return;
-    }
-
-    try {
-      await api.delete(`/expenses/${id}`);
-      load();
-    } catch (err) {
-      console.error("Failed to delete expense:", err);
-      alert(
-        err?.response?.data?.message ||
-        "Failed to delete expense."
-      );
-    }
+  const shareToPartner = (p) => {
+    const share = distributable * (Number(p.sharePercent) || 0) / 100;
+    let msg = `Hi ${p.name}, here's the *${RANGE_LABEL[range]}* summary from ${business?.name || "us"}:\n\n`;
+    msg += `Total Sales: ${inr(sales)}\nGross Profit: ${inr(grossProfit)}\nExpenses: ${inr(expTotal)}\nNet Profit: ${inr(netProfit)}\n`;
+    if (reinvestAmount > 0) msg += `Reinvestment set aside: ${inr(reinvestAmount)}\n`;
+    msg += `Distributable Profit: ${inr(distributable)}\n\n*Your share (${p.sharePercent}%): ${inr(share)}*`;
+    const phone = (p.phone || "").replace(/[^0-9]/g, "");
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
   return (
     <div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 16,
-          flexWrap: "wrap",
-          gap: 10
-        }}
-      >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
         <RangeTabs range={range} setRange={setRange} />
-
-        <button
-          onClick={() => setDraft(emptyExpense())}
-          style={S.primaryBtn}
-        >
-          <Plus size={16} />
-          Add expense
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          {partners.length > 0 && <button onClick={shareToAll} style={S.ghostBtn}><Share2 size={15} /> Share full report</button>}
+          <button onClick={() => setDraft(emptyPartner())} style={S.primaryBtn}><Plus size={16} /> Add partner</button>
+        </div>
       </div>
 
-      <StatCard
-        icon={Wallet}
-        label={`Total expenses · ${RANGE_LABEL[range]}`}
-        value={inr(total)}
-        accent="#FF6B6B"
-      />
+      <div style={S.statGrid}>
+        <StatCard icon={IndianRupee} label="Sales" value={inr(sales)} accent="#C4F135" />
+        <StatCard icon={TrendingUp} label="Gross profit" value={inr(grossProfit)} accent="#3D8BFD" />
+        <StatCard icon={ArrowDownRight} label="Expenses" value={inr(expTotal)} accent="#FF6B6B" />
+        <StatCard icon={ArrowUpRight} label="Net profit" value={inr(netProfit)} accent="#C4F135" />
+      </div>
 
-      {/* CATEGORY GROUPS */}
-      <div
-        style={{
-          marginTop: 18,
-          display: "flex",
-          flexDirection: "column",
-          gap: 14
-        }}
-      >
-        {loading ? (
-          <Empty text="Loading expenses…" />
-        ) : expenses.length === 0 ? (
-          <Empty text="No expenses recorded." />
-        ) : (
-          groupedExpenses.map(([category, group]) => (
-            <div key={category} style={S.card}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: 10,
-                  marginBottom: 8
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 9,
-                    minWidth: 0
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 34,
-                      height: 34,
-                      borderRadius: 10,
-                      background: "rgba(196,241,53,0.10)",
-                      border: "1px solid rgba(196,241,53,0.25)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "#C4F135",
-                      fontWeight: 800,
-                      flexShrink: 0
-                    }}
-                  >
-                    {category.charAt(0).toUpperCase()}
-                  </div>
+      <div style={{ ...S.card, marginTop: 12 }}>
+        <div style={S.cardTitle}>Reinvestment</div>
+        <div style={{ color: "#8B93A1", fontSize: 12.5, marginBottom: 10 }}>
+          Set aside an amount from net profit for the business before splitting the rest between partners.
+        </div>
+        <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+          <Field
+            label={`Reinvestment amount · ${RANGE_LABEL[range]}`}
+            value={String(reinvest[range] ?? "")}
+            onChange={(v) => setReinvest((r) => ({ ...r, [range]: v.replace(/[^0-9.]/g, "") }))}
+            placeholder="0"
+          />
+          <div style={{ paddingBottom: 10, fontSize: 13 }}>
+            <span style={{ color: "#8B93A1" }}>Distributable profit: </span>
+            <b style={{ fontFamily: "'JetBrains Mono',monospace", color: "#C4F135" }}>{inr(distributable)}</b>
+          </div>
+        </div>
+      </div>
 
-                  <div style={{ minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontSize: 14.5,
-                        fontWeight: 700,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap"
-                      }}
-                    >
-                      {category}
-                    </div>
-
-                    <div
-                      style={{
-                        color: "#5A616F",
-                        fontSize: 11.5,
-                        marginTop: 2
-                      }}
-                    >
-                      {group.items.length}{" "}
-                      {group.items.length === 1 ? "expense" : "expenses"}
-                    </div>
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    fontFamily: "'JetBrains Mono',monospace",
-                    fontWeight: 700,
-                    color: "#FF6B6B",
-                    whiteSpace: "nowrap"
-                  }}
-                >
-                  {inr(group.total)}
-                </div>
+      <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+        {loading ? <Empty text="Loading…" /> : partners.length === 0 ? <Empty text="No partners added yet." /> : partners.map((p) => {
+          const share = distributable * (Number(p.sharePercent) || 0) / 100;
+          return (
+            <div key={p._id} style={{ ...S.card, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px" }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>{p.name}</div>
+                <div style={{ color: "#5A616F", fontSize: 11.5 }}>{p.sharePercent}% share {p.phone ? "· " + p.phone : ""}</div>
               </div>
-
-              <div style={{ borderTop: "1px solid #232833" }}>
-                {group.items.map((e) => (
-                  <div
-                    key={e._id}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: 12,
-                      padding: "11px 0",
-                      borderBottom: "1px solid #232833"
-                    }}
-                  >
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div
-                        style={{
-                          color: "#D6DAE2",
-                          fontSize: 13,
-                          fontWeight: 600
-                        }}
-                      >
-                        {e.note || "Expense"}
-                      </div>
-
-                      <div
-                        style={{
-                          color: "#5A616F",
-                          fontSize: 11.5,
-                          marginTop: 3
-                        }}
-                      >
-                        {fmtDate(e.date)}
-                        {e.location ? ` · ${e.location}` : ""}
-                      </div>
-                    </div>
-
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        flexShrink: 0
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontFamily: "'JetBrains Mono',monospace",
-                          fontWeight: 700,
-                          color: "#FF6B6B",
-                          fontSize: 13
-                        }}
-                      >
-                        {inr(e.amount)}
-                      </div>
-
-                      <button
-                        onClick={() => remove(e._id)}
-                        style={S.iconBtn}
-                        title="Delete expense"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ fontFamily: "'JetBrains Mono',monospace", fontWeight: 700, color: "#C4F135" }}>{inr(share)}</div>
+                <button onClick={() => shareToPartner(p)} style={S.iconBtn}><Share2 size={14} /></button>
+                <button onClick={() => remove(p._id)} style={S.iconBtn}><Trash2 size={14} /></button>
               </div>
             </div>
-          ))
-        )}
+          );
+        })}
       </div>
 
       {draft && (
-        <Modal
-          title="Add expense"
-          onClose={() => setDraft(null)}
-        >
+        <Modal title="Add partner" onClose={() => setDraft(null)}>
           <div style={S.formGrid}>
-            {/* CATEGORY */}
-            <div>
-              <label style={S.fieldLabel}>Category</label>
-
-              <input
-                list="expense-categories"
-                value={draft.category}
-                onChange={(e) =>
-                  updateDraft("category", e.target.value)
-                }
-                placeholder="e.g. Sameer"
-                style={S.input}
-              />
-
-              <datalist id="expense-categories">
-                {categories.map((category) => (
-                  <option key={category} value={category} />
-                ))}
-              </datalist>
-
-              <div
-                style={{
-                  color: "#5A616F",
-                  fontSize: 10.5,
-                  marginTop: 5
-                }}
-              >
-                Example:{" "}
-                <b style={{ color: "#8B93A1" }}>
-                  Sameer ne diye the
-                </b>
-                {" → "}
-                <b style={{ color: "#C4F135" }}>
-                  Sameer
-                </b>
-              </div>
-            </div>
-
-            <Field
-              label="Amount *"
-              value={draft.amount}
-              onChange={(v) =>
-                updateDraft(
-                  "amount",
-                  v.replace(/[^0-9.]/g, "")
-                )
-              }
-              placeholder="0"
-            />
-
-            <div style={{ display: "flex", gap: 10 }}>
-              <Field
-                label="Date"
-                type="date"
-                value={draft.date}
-                onChange={(v) => updateDraft("date", v)}
-              />
-
-              <Field
-                label="Location"
-                value={draft.location}
-                onChange={(v) => updateDraft("location", v)}
-                placeholder="e.g. Main Showroom"
-              />
-            </div>
-
-            <Field
-              label="Note"
-              value={draft.note}
-              onChange={(v) => updateDraft("note", v)}
-              placeholder="e.g. Sameer ne diye the"
-              textarea
-            />
-
-            {draft.note?.trim() && (
-              <div
-                style={{
-                  border: "1px solid #303846",
-                  background: "#171B23",
-                  borderRadius: 10,
-                  padding: "10px 12px",
-                  fontSize: 12
-                }}
-              >
-                <span style={{ color: "#8B93A1" }}>
-                  Category:
-                </span>{" "}
-                <b style={{ color: "#C4F135" }}>
-                  {getCategoryFromNote(draft.note) ||
-                    draft.category ||
-                    "Uncategorized"}
-                </b>
-              </div>
-            )}
+            <Field label="Partner name *" value={draft.name} onChange={(v) => setDraft((d) => ({ ...d, name: v }))} placeholder="Partner name" />
+            <Field label="WhatsApp number" value={draft.phone} onChange={(v) => setDraft((d) => ({ ...d, phone: v }))} placeholder="91 98765 43210" />
+            <Field label="Profit share %" value={draft.sharePercent} onChange={(v) => setDraft((d) => ({ ...d, sharePercent: v.replace(/[^0-9.]/g, "") }))} placeholder="e.g. 25" />
           </div>
-
-          <button
-            onClick={save}
-            disabled={
-              !draft.amount ||
-              Number(draft.amount) <= 0 ||
-              (!draft.category && !draft.note?.trim())
-            }
-            style={{
-              ...S.primaryBtn,
-              width: "100%",
-              marginTop: 16,
-              opacity:
-                !draft.amount ||
-                Number(draft.amount) <= 0 ||
-                (!draft.category && !draft.note?.trim())
-                  ? 0.4
-                  : 1,
-              position: "sticky",
-              bottom: -1,
-              zIndex: 1,
-              boxShadow: "0 -8px 16px 4px #171B23"
-            }}
-          >
-            <Check size={16} />
-            Save expense
+          <button onClick={save} disabled={!draft.name || !draft.sharePercent} style={{ ...S.primaryBtn, width: "100%", marginTop: 16, opacity: (!draft.name || !draft.sharePercent) ? 0.4 : 1 }}>
+            <Check size={16} /> Save partner
           </button>
         </Modal>
       )}
@@ -1909,302 +1276,20 @@ export function Field({ label, value, onChange, placeholder, textarea, type = "t
     </div>
   );
 }
-function ScooterModal({
-  editing,
-  setEditing,
-  onClose,
-  onSave,
-}) {
-  const f = editing.data;
 
-  const set = (key, value) => {
-    setEditing((prev) => ({
-      ...prev,
-
-      data: {
-        ...prev.data,
-        [key]: value,
-      },
-    }));
-  };
-
-  const handleImg = (e) => {
-    const file = e.target.files?.[0];
-
-    if (!file) return;
-
-    const preview = URL.createObjectURL(file);
-
-    setEditing((prev) => ({
-      ...prev,
-      imageFile: file,
-      imagePreview: preview,
-    }));
-  };
-
-  const canSave =
-    f.name &&
-    f.actualPrice &&
-    f.sellingPrice;
-
+export function Modal({ title, onClose, children, wide }) {
   return (
-    <Modal
-      title={
-        editing.id
-          ? "Edit scooter"
-          : "Add scooter"
-      }
-      onClose={onClose}
-    >
-      {/* IMAGE */}
-      <div
-        style={{
-          display: "flex",
-          gap: 14,
-          marginBottom: 16,
-          alignItems: "center",
-        }}
-      >
-        <div
-          style={{
-            width: 60,
-            height: 60,
-
-            borderRadius: 10,
-            background: "#1E2430",
-
-            overflow: "hidden",
-
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-
-            flexShrink: 0,
-          }}
-        >
-          {editing.imagePreview ? (
-            <img
-              src={editing.imagePreview}
-              alt="Scooter"
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-              }}
-            />
-          ) : (
-            <ImageIcon
-              size={22}
-              color="#5A616F"
-            />
-          )}
+    <div style={{ position: "fixed", inset: 0, background: "rgba(8,10,14,0.7)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 100, backdropFilter: "blur(2px)" }} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#171B23", borderRadius: "18px 18px 0 0", width: "100%", maxWidth: wide ? 560 : 460, maxHeight: "88vh", overflowY: "auto", padding: 22, border: "1px solid #232833", borderBottom: "none" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+          <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 17 }}>{title}</div>
+          <button onClick={onClose} style={{ background: "#1E2430", border: "none", borderRadius: 8, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+            <X size={16} color="#8B93A1" />
+          </button>
         </div>
-
-        <label
-          style={{
-            ...S.ghostBtn,
-            cursor: "pointer",
-            fontSize: 13,
-          }}
-        >
-          <Upload size={14} />
-
-          Upload image
-
-          <input
-            type="file"
-            accept="image/*"
-            onChange={handleImg}
-            style={{
-              display: "none",
-            }}
-          />
-        </label>
+        {children}
       </div>
-
-      {/* FORM */}
-      <div style={S.formGrid}>
-
-        <Field
-          label="Scooter name *"
-          value={f.name}
-          onChange={(v) =>
-            set("name", v)
-          }
-          placeholder="e.g. Volt Ryder X1"
-        />
-
-        <Field
-          label="Chassis no."
-          value={f.chassisNo}
-          onChange={(v) =>
-            set("chassisNo", v)
-          }
-          placeholder="CH-000123"
-        />
-
-        <Field
-          label="Motor no."
-          value={f.motorNo}
-          onChange={(v) =>
-            set("motorNo", v)
-          }
-          placeholder="MT-000456"
-        />
-
-        <Field
-          label="Warranty"
-          value={f.warranty}
-          onChange={(v) =>
-            set("warranty", v)
-          }
-          placeholder="e.g. 2 yrs"
-        />
-
-        <Field
-          label="Features"
-          value={f.features}
-          onChange={(v) =>
-            set("features", v)
-          }
-          placeholder="LED display, reverse mode..."
-          textarea
-        />
-
-        <Field
-          label="Battery info"
-          value={f.batteryInfo}
-          onChange={(v) =>
-            set("batteryInfo", v)
-          }
-          placeholder="60V 30Ah"
-          textarea
-        />
-
-        {/* SCOOTER + BATTERY PRICE */}
-        <div
-          style={{
-            display: "grid",
-
-            gridTemplateColumns:
-              "repeat(2, minmax(0, 1fr))",
-
-            gap: 10,
-          }}
-        >
-          <Field
-            label="Scooter price"
-            value={f.scooterPrice}
-            onChange={(v) =>
-              set(
-                "scooterPrice",
-                v.replace(/[^0-9.]/g, "")
-              )
-            }
-            placeholder="0"
-          />
-
-          <Field
-            label="Battery price"
-            value={f.batteryPrice}
-            onChange={(v) =>
-              set(
-                "batteryPrice",
-                v.replace(/[^0-9.]/g, "")
-              )
-            }
-            placeholder="0"
-          />
-        </div>
-
-        {/* ACTUAL + SELLING PRICE */}
-        <div
-          style={{
-            display: "grid",
-
-            gridTemplateColumns:
-              "repeat(2, minmax(0, 1fr))",
-
-            gap: 10,
-          }}
-        >
-          <Field
-            label="Actual (cost) price *"
-            value={f.actualPrice}
-            onChange={(v) =>
-              set(
-                "actualPrice",
-                v.replace(/[^0-9.]/g, "")
-              )
-            }
-            placeholder="0"
-          />
-
-          <Field
-            label="Selling price *"
-            value={f.sellingPrice}
-            onChange={(v) =>
-              set(
-                "sellingPrice",
-                v.replace(/[^0-9.]/g, "")
-              )
-            }
-            placeholder="0"
-          />
-        </div>
-
-      </div>
-
-      {/* SAVE BUTTON */}
-
-      <div
-        style={{
-          marginTop: 20,
-
-          paddingTop: 14,
-          paddingBottom: 14,
-
-          position: "sticky",
-
-          bottom: 0,
-
-          zIndex: 999999,
-
-          background: "#202631",
-
-          borderTop:
-            "1px solid #303846",
-        }}
-      >
-        <button
-          onClick={onSave}
-          disabled={!canSave}
-          style={{
-            ...S.primaryBtn,
-
-            width: "100%",
-
-            justifyContent: "center",
-
-            minHeight: 48,
-
-            opacity:
-              canSave
-                ? 1
-                : 0.45,
-
-            pointerEvents:
-              canSave
-                ? "auto"
-                : "none",
-          }}
-        >
-          <Check size={17} />
-
-          Save scooter
-        </button>
-      </div>
-    </Modal>
+    </div>
   );
 }
 
