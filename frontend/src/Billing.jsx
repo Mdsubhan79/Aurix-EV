@@ -17,7 +17,7 @@ import {
   X,
   Check
 } from "lucide-react";
-import { api, socket, S, Field, Modal, Empty, inr, fmtDate, todayISO } from "./App3";
+import { api, socket, S, Field, Modal, Empty, inr, fmtDate, todayISO } from "./App";
 
 
 
