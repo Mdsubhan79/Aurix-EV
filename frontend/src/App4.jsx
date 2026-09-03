@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState, useCallback } from "react";
 import axios from "axios";
 import { io } from "socket.io-client";
 import "./responsive.css";
-import Billing from "./Billing";
+import Billing from "./Billing4";
 import {
   Zap, LayoutDashboard, Bike, Receipt, TrendingUp, Wallet, Users, Settings as SettingsIcon,
   Plus, X, Trash2, Edit2, Search, Download, Share2, ChevronRight, IndianRupee, MapPin,
@@ -1616,27 +1616,6 @@ function Expenses() {
                 </div>
               </div>
 
-              {/* Column headers: Note | Expense | Amount */}
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: "8px 0 6px",
-                }}
-              >
-                <div style={{ flex: 1, minWidth: 0, color: "#5A616F", fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                  Note
-                </div>
-                <div style={{ flexShrink: 0, minWidth: 70, textAlign: "center", color: "#5A616F", fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                  Expense
-                </div>
-                <div style={{ flexShrink: 0, minWidth: 60, textAlign: "right", color: "#5A616F", fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, paddingRight: 38 }}>
-                  Amount
-                </div>
-              </div>
-
               {/* Rows: Note (left, grows) — Expense Name (center badge) — Amount (right) */}
               <div>
                 {group.items.map((e) => (
@@ -1820,169 +1799,6 @@ function Expenses() {
           >
             <Check size={16} />
             Save expense
-          </button>
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-/* =========================================================================
-   13. PARTNERS — profit sharing + WhatsApp
-========================================================================= */
-function emptyPartner() { return { name: "", phone: "", sharePercent: "" }; }
-
-function Partners({ business }) {
-  const [range, setRange] = useState("month");
-  const [partners, setPartners] = useState([]);
-  const [bills, setBills] = useState([]);
-  const [expenses, setExpenses] = useState([]);
-  const [draft, setDraft] = useState(null);
-  const [loading, setLoading] = useState(true);
-  // Reinvestment is set aside from net profit before splitting between
-  // partners. Kept per range in local state so it's easy to adjust.
-  const [reinvest, setReinvest] = useState({});
-
-  const load = useCallback(() => {
-    setLoading(true);
-    Promise.all([
-      api.get("/partners").catch(() => ({ data: [] })),
-      api.get(`/bills?range=${range}`).catch(() => ({ data: [] })),
-      api.get(`/expenses?range=${range}`).catch(() => ({ data: [] })),
-    ])
-      .then(([p, b, e]) => {
-        setPartners(Array.isArray(p.data) ? p.data : []);
-        setBills(Array.isArray(b.data) ? b.data : []);
-        setExpenses(Array.isArray(e.data) ? e.data : []);
-      })
-      .finally(() => setLoading(false));
-  }, [range]);
-
-  useEffect(() => { load(); }, [load]);
-  useEffect(() => {
-    const refresh = () => load();
-    const events = ["partner:created", "partner:updated", "partner:deleted", "bill:created", "bill:updated", "bill:deleted", "expense:created", "expense:updated", "expense:deleted"];
-    events.forEach((ev) => socket.on(ev, refresh));
-    return () => { events.forEach((ev) => socket.off(ev, refresh)); };
-  }, [load]);
-
-  const sales = bills.reduce((s, b) => s + Number(b.total || 0), 0);
-  const grossProfit = bills.reduce((s, b) => s + (b.items || []).reduce((x, it) => x + (Number(it.sellingPrice || 0) - Number(it.actualPrice || 0)) * Number(it.qty || 1), 0), 0);
-  const expTotal = expenses.reduce((s, e) => s + Number(e.amount || 0), 0);
-  const netProfit = grossProfit - expTotal;
-  const reinvestAmount = Math.max(0, Number(reinvest[range] || 0));
-  const distributable = Math.max(0, netProfit - reinvestAmount);
-
-  const save = async () => {
-    if (!draft?.name || !draft?.sharePercent) return;
-    try {
-      await api.post("/partners", draft);
-      setDraft(null);
-      load();
-    } catch (err) {
-      console.error("Failed to save partner:", err);
-      alert(err?.response?.data?.message || "Failed to save partner.");
-    }
-  };
-
-  const remove = async (id) => {
-    if (!window.confirm("Remove this partner?")) return;
-    try {
-      await api.delete(`/partners/${id}`);
-      load();
-    } catch (err) {
-      console.error("Failed to remove partner:", err);
-      alert(err?.response?.data?.message || "Failed to remove partner.");
-    }
-  };
-
-  const shareToAll = () => {
-    let msg = `*${business?.name || "Business"} — ${RANGE_LABEL[range]} Report*\n\n`;
-    msg += `Total Sales: ${inr(sales)}\nGross Profit: ${inr(grossProfit)}\nExpenses: ${inr(expTotal)}\nNet Profit: ${inr(netProfit)}\n`;
-    if (reinvestAmount > 0) msg += `Reinvestment set aside: ${inr(reinvestAmount)}\n`;
-    msg += `*Distributable Profit: ${inr(distributable)}*\n\n*Partner Shares:*\n`;
-    partners.forEach((p) => { msg += `${p.name} (${p.sharePercent}%): ${inr(distributable * (Number(p.sharePercent) || 0) / 100)}\n`; });
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
-  };
-
-  const shareToPartner = (p) => {
-    const share = distributable * (Number(p.sharePercent) || 0) / 100;
-    let msg = `Hi ${p.name}, here's the *${RANGE_LABEL[range]}* summary from ${business?.name || "us"}:\n\n`;
-    msg += `Total Sales: ${inr(sales)}\nGross Profit: ${inr(grossProfit)}\nExpenses: ${inr(expTotal)}\nNet Profit: ${inr(netProfit)}\n`;
-    if (reinvestAmount > 0) msg += `Reinvestment set aside: ${inr(reinvestAmount)}\n`;
-    msg += `Distributable Profit: ${inr(distributable)}\n\n*Your share (${p.sharePercent}%): ${inr(share)}*`;
-    const phone = (p.phone || "").replace(/[^0-9]/g, "");
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, "_blank");
-  };
-
-  return (
-    <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
-        <RangeTabs range={range} setRange={setRange} />
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {partners.length > 0 && <button onClick={shareToAll} style={S.ghostBtn}><Share2 size={15} /> Share full report</button>}
-          <button onClick={() => setDraft(emptyPartner())} style={S.primaryBtn}><Plus size={16} /> Add partner</button>
-        </div>
-      </div>
-
-      <div style={S.statGrid}>
-        <StatCard icon={IndianRupee} label="Sales" value={inr(sales)} accent="#C4F135" />
-        <StatCard icon={TrendingUp} label="Gross profit" value={inr(grossProfit)} accent="#3D8BFD" />
-        <StatCard icon={ArrowDownRight} label="Expenses" value={inr(expTotal)} accent="#FF6B6B" />
-        <StatCard icon={ArrowUpRight} label="Net profit" value={inr(netProfit)} accent="#C4F135" />
-      </div>
-
-      <div style={{ ...S.card, marginTop: 12 }}>
-        <div style={S.cardTitle}>Reinvestment</div>
-        <div style={{ color: "#8B93A1", fontSize: 12.5, marginBottom: 10 }}>
-          Set aside an amount from net profit for the business before splitting the rest between partners.
-        </div>
-        <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
-          <Field
-            label={`Reinvestment amount · ${RANGE_LABEL[range]}`}
-            value={String(reinvest[range] ?? "")}
-            onChange={(v) => setReinvest((r) => ({ ...r, [range]: v.replace(/[^0-9.]/g, "") }))}
-            placeholder="0"
-          />
-          <div style={{ paddingBottom: 10, fontSize: 13 }}>
-            <span style={{ color: "#8B93A1" }}>Distributable profit: </span>
-            <b style={{ fontFamily: "'JetBrains Mono',monospace", color: "#C4F135" }}>{inr(distributable)}</b>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 8 }}>
-        {loading ? <Empty text="Loading…" /> : partners.length === 0 ? <Empty text="No partners added yet." /> : partners.map((p) => {
-          const share = distributable * (Number(p.sharePercent) || 0) / 100;
-          return (
-            <div key={p._id} style={{ ...S.card, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px" }}>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 14 }}>{p.name}</div>
-                <div style={{ color: "#5A616F", fontSize: 11.5 }}>{p.sharePercent}% share {p.phone ? "· " + p.phone : ""}</div>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ fontFamily: "'JetBrains Mono',monospace", fontWeight: 700, color: "#C4F135" }}>{inr(share)}</div>
-                <button onClick={() => shareToPartner(p)} style={S.iconBtn}><Share2 size={14} /></button>
-                <button onClick={() => remove(p._id)} style={S.iconBtn}><Trash2 size={14} /></button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {draft && (
-        <Modal title="Add partner" onClose={() => setDraft(null)}>
-          <div style={S.formGrid}>
-            <Field label="Partner name *" value={draft.name} onChange={(v) => setDraft((d) => ({ ...d, name: v }))} placeholder="Partner name" />
-            <Field label="WhatsApp number" value={draft.phone} onChange={(v) => setDraft((d) => ({ ...d, phone: v }))} placeholder="91 98765 43210" />
-            <Field label="Profit share %" value={draft.sharePercent} onChange={(v) => setDraft((d) => ({ ...d, sharePercent: v.replace(/[^0-9.]/g, "") }))} placeholder="e.g. 25" />
-          </div>
-          <button
-            onClick={save}
-            disabled={!draft.name || !draft.sharePercent}
-            style={{ ...S.primaryBtn, width: "100%", marginTop: 16, opacity: (!draft.name || !draft.sharePercent) ? 0.4 : 1, position: "sticky", bottom: -1, zIndex: 1, boxShadow: "0 -8px 16px 4px #171B23" }}
-          >
-            <Check size={16} /> Save partner
           </button>
         </Modal>
       )}
