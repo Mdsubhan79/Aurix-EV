@@ -1332,18 +1332,25 @@ function Sales() {
   );
 }
 
+/* =========================================================================
+   12. EXPENSES
+   Flow:
+     Expense Name (e.g. "Rent")  +  Amount  +  Note (e.g. "Sameer ko diye the")
+        -> Category = first word of Note (e.g. "Sameer")
+        -> grouped list, header = category, each row = Note | Name | Amount
+========================================================================= */
 function emptyExpense() {
   return {
     date: todayISO(),
-    category: "",
+    name: "",     // Expense Name — e.g. "Rent", "Bill", "Parts", "Salary"
     amount: "",
-    note: "",
+    note: "",     // e.g. "Sameer ko diye the" — first word becomes the category
     location: ""
   };
 }
 
 // First word of the note becomes the expense category.
-// Example: "Sameer ne diye the" -> "Sameer"
+// Example: "Sameer ko diye the" -> "Sameer"
 function getCategoryFromNote(note = "") {
   const firstWord = String(note).trim().split(/\s+/)[0] || "";
   return firstWord.replace(/[.,!?;:()[\]{}"'`]+$/g, "").trim();
@@ -1393,18 +1400,7 @@ function Expenses() {
     0
   );
 
-  // Existing categories are available as suggestions.
-  const categories = useMemo(() => {
-    return Array.from(
-      new Set(
-        expenses
-          .map((e) => String(e.category || "").trim())
-          .filter(Boolean)
-      )
-    ).sort((a, b) => a.localeCompare(b));
-  }, [expenses]);
-
-  // Group all expenses by category.
+  // Group all expenses by category (derived from the note's first word).
   const groupedExpenses = useMemo(() => {
     const groups = {};
 
@@ -1431,40 +1427,27 @@ function Expenses() {
   const updateDraft = (key, value) => {
     setDraft((current) => {
       if (!current) return current;
-
-      const next = {
-        ...current,
-        [key]: value
-      };
-
-      // As soon as the note starts with a word, use that word as category.
-      if (key === "note") {
-        const autoCategory = getCategoryFromNote(value);
-
-        if (autoCategory) {
-          next.category = autoCategory;
-        }
-      }
-
-      return next;
+      return { ...current, [key]: value };
     });
   };
+
+  // Live preview of what category this expense will land under.
+  const previewCategory = draft
+    ? getCategoryFromNote(draft.note) || "Uncategorized"
+    : "";
 
   const save = async () => {
     if (!draft) return;
 
-    const note = String(draft.note || "").trim();
-    const autoCategory = getCategoryFromNote(note);
-
     const payload = {
       ...draft,
-      category:
-        autoCategory ||
-        String(draft.category || "").trim()
+      name: String(draft.name || "").trim(),
+      note: String(draft.note || "").trim(),
+      category: getCategoryFromNote(draft.note) || "Uncategorized",
     };
 
-    if (!payload.category) {
-      alert("Please enter a category or write a note.");
+    if (!payload.name) {
+      alert("Please enter an expense name (e.g. Rent, Bill, Parts).");
       return;
     }
 
@@ -1503,6 +1486,12 @@ function Expenses() {
     }
   };
 
+  const canSave =
+    draft &&
+    String(draft.name || "").trim() &&
+    draft.amount &&
+    Number(draft.amount) > 0;
+
   return (
     <div>
       <div
@@ -1533,7 +1522,8 @@ function Expenses() {
         accent="#FF6B6B"
       />
 
-      {/* CATEGORY GROUPS */}
+      {/* CATEGORY GROUPS — header = category (e.g. "SAMEER"), each row =
+          Note | Expense Name | Amount, matching the target layout. */}
       <div
         style={{
           marginTop: 18,
@@ -1555,7 +1545,9 @@ function Expenses() {
                   justifyContent: "space-between",
                   alignItems: "center",
                   gap: 10,
-                  marginBottom: 8
+                  marginBottom: 4,
+                  paddingBottom: 10,
+                  borderBottom: "1px solid #232833",
                 }}
               >
                 <div
@@ -1589,6 +1581,8 @@ function Expenses() {
                       style={{
                         fontSize: 14.5,
                         fontWeight: 700,
+                        letterSpacing: 0.3,
+                        textTransform: "uppercase",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap"
@@ -1622,7 +1616,8 @@ function Expenses() {
                 </div>
               </div>
 
-              <div style={{ borderTop: "1px solid #232833" }}>
+              {/* Rows: Note (left, grows) — Expense Name (center badge) — Amount (right) */}
+              <div>
                 {group.items.map((e) => (
                   <div
                     key={e._id}
@@ -1630,7 +1625,7 @@ function Expenses() {
                       display: "flex",
                       justifyContent: "space-between",
                       alignItems: "center",
-                      gap: 12,
+                      gap: 10,
                       padding: "11px 0",
                       borderBottom: "1px solid #232833"
                     }}
@@ -1640,10 +1635,13 @@ function Expenses() {
                         style={{
                           color: "#D6DAE2",
                           fontSize: 13,
-                          fontWeight: 600
+                          fontWeight: 600,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap"
                         }}
                       >
-                        {e.note || "Expense"}
+                        {e.note || e.name || "Expense"}
                       </div>
 
                       <div
@@ -1660,6 +1658,29 @@ function Expenses() {
 
                     <div
                       style={{
+                        flexShrink: 0,
+                        minWidth: 70,
+                        textAlign: "center",
+                      }}
+                    >
+                      <span
+                        style={{
+                          display: "inline-block",
+                          background: "#1E2430",
+                          color: "#8FAE2A",
+                          fontSize: 11,
+                          fontWeight: 700,
+                          padding: "3px 9px",
+                          borderRadius: 20,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {e.name || "—"}
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
                         display: "flex",
                         alignItems: "center",
                         gap: 8,
@@ -1671,7 +1692,9 @@ function Expenses() {
                           fontFamily: "'JetBrains Mono',monospace",
                           fontWeight: 700,
                           color: "#FF6B6B",
-                          fontSize: 13
+                          fontSize: 13,
+                          minWidth: 60,
+                          textAlign: "right",
                         }}
                       >
                         {inr(e.amount)}
@@ -1699,43 +1722,12 @@ function Expenses() {
           onClose={() => setDraft(null)}
         >
           <div style={S.formGrid}>
-            {/* CATEGORY */}
-            <div>
-              <label style={S.fieldLabel}>Category</label>
-
-              <input
-                list="expense-categories"
-                value={draft.category}
-                onChange={(e) =>
-                  updateDraft("category", e.target.value)
-                }
-                placeholder="e.g. Sameer"
-                style={S.input}
-              />
-
-              <datalist id="expense-categories">
-                {categories.map((category) => (
-                  <option key={category} value={category} />
-                ))}
-              </datalist>
-
-              <div
-                style={{
-                  color: "#5A616F",
-                  fontSize: 10.5,
-                  marginTop: 5
-                }}
-              >
-                Example:{" "}
-                <b style={{ color: "#8B93A1" }}>
-                  Sameer ne diye the
-                </b>
-                {" → "}
-                <b style={{ color: "#C4F135" }}>
-                  Sameer
-                </b>
-              </div>
-            </div>
+            <Field
+              label="Expense Name *"
+              value={draft.name}
+              onChange={(v) => updateDraft("name", v)}
+              placeholder="e.g. Rent, Bill, Parts, Salary"
+            />
 
             <Field
               label="Amount *"
@@ -1748,6 +1740,31 @@ function Expenses() {
               }
               placeholder="0"
             />
+
+            <Field
+              label="Note"
+              value={draft.note}
+              onChange={(v) => updateDraft("note", v)}
+              placeholder="e.g. Sameer ko diye the"
+              textarea
+            />
+
+            <div
+              style={{
+                border: "1px solid #303846",
+                background: "#171B23",
+                borderRadius: 10,
+                padding: "10px 12px",
+                fontSize: 12
+              }}
+            >
+              <span style={{ color: "#8B93A1" }}>
+                Category (auto, from first word of note):
+              </span>{" "}
+              <b style={{ color: "#C4F135" }}>
+                {previewCategory}
+              </b>
+            </div>
 
             <div style={{ display: "flex", gap: 10 }}>
               <Field
@@ -1764,54 +1781,16 @@ function Expenses() {
                 placeholder="e.g. Main Showroom"
               />
             </div>
-
-            <Field
-              label="Note"
-              value={draft.note}
-              onChange={(v) => updateDraft("note", v)}
-              placeholder="e.g. Sameer ne diye the"
-              textarea
-            />
-
-            {draft.note?.trim() && (
-              <div
-                style={{
-                  border: "1px solid #303846",
-                  background: "#171B23",
-                  borderRadius: 10,
-                  padding: "10px 12px",
-                  fontSize: 12
-                }}
-              >
-                <span style={{ color: "#8B93A1" }}>
-                  Category:
-                </span>{" "}
-                <b style={{ color: "#C4F135" }}>
-                  {getCategoryFromNote(draft.note) ||
-                    draft.category ||
-                    "Uncategorized"}
-                </b>
-              </div>
-            )}
           </div>
 
           <button
             onClick={save}
-            disabled={
-              !draft.amount ||
-              Number(draft.amount) <= 0 ||
-              (!draft.category && !draft.note?.trim())
-            }
+            disabled={!canSave}
             style={{
               ...S.primaryBtn,
               width: "100%",
               marginTop: 16,
-              opacity:
-                !draft.amount ||
-                Number(draft.amount) <= 0 ||
-                (!draft.category && !draft.note?.trim())
-                  ? 0.4
-                  : 1,
+              opacity: canSave ? 1 : 0.4,
               position: "sticky",
               bottom: -1,
               zIndex: 1,
