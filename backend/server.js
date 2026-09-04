@@ -84,8 +84,11 @@ const scooterSchema = new mongoose.Schema(
     batteryInfo: { type: String, default: "" },
     scooterPrice: { type: Number, default: 0 },
     batteryPrice: { type: Number, default: 0 },
-    actualPrice: { type: Number, required: true },
-    sellingPrice: { type: Number, required: true },
+    // No longer required at catalogue time — battery info/price and actual
+    // cost/selling price are now entered per-unit when the scooter is added
+    // to a bill (pricing and battery choice can vary sale to sale).
+    actualPrice: { type: Number, default: 0 },
+    sellingPrice: { type: Number, default: 0 },
     stockStatus: { type: String, enum: ["in_stock", "sold", "service"], default: "in_stock" },
   },
   { timestamps: true }
@@ -144,6 +147,7 @@ const expenseSchema = new mongoose.Schema(
   {
     owner: { type: mongoose.Schema.Types.ObjectId, ref: "Owner", required: true, index: true },
     date: { type: Date, required: true, default: Date.now },
+    name: { type: String, required: true, default: "" }, // e.g. "Rent", "Bill", "Parts" — was missing entirely before, so it was silently dropped on save
     category: { type: String, required: true },
     amount: { type: Number, required: true },
     location: { type: String, default: "" },
@@ -621,7 +625,8 @@ app.get(
         const billProfit = (bill.items || []).reduce(
           (sum, item) => {
             const profit =
-              (Number(item.sellingPrice || 0) -
+              (Number(item.sellingPrice || 0) +
+                Number(item.batteryPrice || 0) -
                 Number(item.actualPrice || 0)) *
               Number(item.qty || 1);
 
@@ -797,7 +802,8 @@ app.post(
         (bill.items || []).reduce(
           (itemSum, item) =>
             itemSum +
-            (Number(item.sellingPrice || 0) -
+            (Number(item.sellingPrice || 0) +
+              Number(item.batteryPrice || 0) -
               Number(item.actualPrice || 0)) *
               Number(item.qty || 1),
           0
@@ -953,9 +959,12 @@ app.post(
         "Scooter",
         "Chassis Number",
         "Motor Number",
+        "Battery Info",
+        "Warranty",
         "Description",
         "Actual Price",
         "Selling Price",
+        "Battery Price",
         "Quantity"
       ],
 
@@ -966,9 +975,12 @@ app.post(
           item.name || "",
           item.chassisNo || "",
           item.motorNo || "",
+          item.batteryType || "",
+          item.warranty || "",
           item.description || "",
           Number(item.actualPrice || 0),
           Number(item.sellingPrice || 0),
+          Number(item.batteryPrice || 0),
           Number(item.qty || 1),
         ])
       )
@@ -981,6 +993,7 @@ app.post(
     const expenseRows = [
       [
         "Date",
+        "Name",
         "Category",
         "Amount",
         "Location",
@@ -989,6 +1002,7 @@ app.post(
 
       ...expenses.map((e) => [
         formatSheetDate(e.date),
+        e.name || "",
         e.category || "",
         Number(e.amount || 0),
         e.location || "",

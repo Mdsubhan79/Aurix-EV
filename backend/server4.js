@@ -928,12 +928,17 @@ app.post(
               `${item.name || ""} x${item.qty || 1}`
           )
           .join(", "),
+        // Total quantity across all items on the bill — this now sits in the
+        // "Qty" column position matching the header row above. Previously
+        // this value was missing here and a qty was tacked onto the END of
+        // the row instead, which shifted Subtotal/GST Rate/GST Amount/Total/
+        // Payment Mode each one column to the left of their own headers.
+        (b.items || []).reduce((sum, item) => sum + Number(item.qty || 1), 0),
         Number(b.subtotal || 0),
         Number(b.gstRate || 0),
         Number(b.gstAmount || 0),
         Number(b.total || 0),
         b.paymentMode || "",
-        Number(b.items?.[0]?.qty || 1), 
       ])
     ];
 
