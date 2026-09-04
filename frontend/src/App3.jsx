@@ -628,7 +628,7 @@ function TopBar({ business, tab, owner, onLogout, isMobile }) {
    8. DASHBOARD 
 ========================================================================= */
 function Dashboard({ setTab }) {
-  const [range, setRange] = useState("month");
+  const [range, setRange] = useState("year");
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);

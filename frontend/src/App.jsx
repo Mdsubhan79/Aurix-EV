@@ -628,7 +628,7 @@ function TopBar({ business, tab, owner, onLogout, isMobile }) {
    8. DASHBOARD 
 ========================================================================= */
 function Dashboard({ setTab }) {
-  const [range, setRange] = useState("month");
+  const [range, setRange] = useState("year");
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
@@ -1384,23 +1384,18 @@ function Sales() {
 
 /* =========================================================================
    12. EXPENSES
-   Flow:
-     Expense Name (e.g. "Rent")  +  Amount  +  Note (e.g. "Sameer ko diye the")
-        -> Category = first word of Note (e.g. "Sameer")
-        -> grouped list, header = category, each row = Note | Name | Amount
 ========================================================================= */
 function emptyExpense() {
   return {
     date: todayISO(),
-    name: "",     // Expense Name — e.g. "Rent", "Bill", "Parts", "Salary"
+    name: "",     
     amount: "",
-    note: "",     // e.g. "Sameer ko diye the" — first word becomes the category
+    note: "",     
     location: ""
   };
 }
 
-// First word of the note becomes the expense category.
-// Example: "Sameer ko diye the" -> "Sameer"
+
 function getCategoryFromNote(note = "") {
   const firstWord = String(note).trim().split(/\s+/)[0] || "";
   return firstWord.replace(/[.,!?;:()[\]{}"'`]+$/g, "").trim();
@@ -1450,7 +1445,7 @@ function Expenses() {
     0
   );
 
-  // Group all expenses by category (derived from the note's first word).
+
   const groupedExpenses = useMemo(() => {
     const groups = {};
 
@@ -1481,7 +1476,7 @@ function Expenses() {
     });
   };
 
-  // Live preview of what category this expense will land under.
+  // Live preview 
   const previewCategory = draft
     ? getCategoryFromNote(draft.note) || "Uncategorized"
     : "";
@@ -1572,7 +1567,7 @@ function Expenses() {
         accent="#FF6B6B"
       />
 
-      {/* CATEGORY GROUPS — header = category (e.g. "SAMEER"), each row =
+      {/* CATEGORY GROUPS — header = category
           Note | Expense Name | Amount, matching the target layout. */}
       <div
         style={{
@@ -1816,7 +1811,7 @@ function Expenses() {
               label="Note"
               value={draft.note}
               onChange={(v) => updateDraft("note", v)}
-              placeholder="e.g. Sameer ko diye the"
+              placeholder="e.g. first word becomes the category"
               textarea
             />
 
