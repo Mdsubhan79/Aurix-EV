@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
@@ -88,98 +89,178 @@ function useToast() {
   return [node, show];
 }
 
+function usePrintRoot() {
+  const ref = useRef(null);
+  if (ref.current === null && typeof document !== "undefined") {
+    let el = document.getElementById("bill-print-root");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "bill-print-root";
+      document.body.appendChild(el);
+    }
+    ref.current = el;
+  }
+  return ref.current;
+}
+
 function usePrintStyles() {
   useEffect(() => {
     if (document.getElementById("bill-print-css")) return;
-
     const style = document.createElement("style");
-
     style.id = "bill-print-css";
-
     style.innerHTML = `
-      @page {
-        size: A4 portrait;
-        margin: 6mm;
+      @page { size: A4; margin: 10mm; }
+      @media screen {
+        #bill-print-root { display: none !important; }
       }
-
       @media print {
-        html,
-        body {
-          width: 210mm !important;
-          height: auto !important;
-          margin: 0 !important;
-          padding: 0 !important;
-          background: #ffffff !important;
-          overflow: visible !important;
-        }
-
-        body * {
-          visibility: hidden !important;
-        }
-
-        #bill-preview,
-        #bill-preview * {
-          visibility: visible !important;
-        }
-
-        #bill-preview {
-          position: absolute !important;
-          left: 0 !important;
-          top: 0 !important;
-
-          width: 198mm !important;
-          min-width: 198mm !important;
-          max-width: 198mm !important;
-
-          min-height: 285mm !important;
-          height: 285mm !important;
-
-          margin: 0 !important;
-          padding: 0 !important;
-
-          box-sizing: border-box !important;
-
-          display: flex !important;
-          flex-direction: column !important;
-
-          border: none !important;
-          border-radius: 0 !important;
-          box-shadow: none !important;
-
-          background: #ffffff !important;
-          overflow: hidden !important;
-        }
-
-        .no-print {
-          display: none !important;
-        }
-
-        #bill-print-footer {
-          margin-top: auto !important;
-        }
-
-        table {
-          width: 100% !important;
-          border-collapse: collapse !important;
-        }
-
-        tr {
-          page-break-inside: avoid !important;
-          break-inside: avoid !important;
-        }
+        html, body { margin: 0 !important; padding: 0 !important; height: auto !important; }
+        #root { display: none !important; }
+        #bill-print-root { display: block !important; margin: 0 !important; padding: 0 !important; }
       }
     `;
-
     document.head.appendChild(style);
-
-    return () => {
-      style.remove();
-    };
   }, []);
+}
+
+/* One invoice layout, reused for the on-screen preview, the PDF capture
+   target, and the dedicated print copy — so all three are always identical. */
+function InvoiceCard({ bill, business, innerRef, forPrint }) {
+  return (
+    <div
+      id={forPrint ? undefined : "bill-preview"}
+      ref={innerRef}
+      style={{
+        background: "#fff", color: "#12151A",
+        width: forPrint ? "190mm" : "100%",
+        maxWidth: forPrint ? "190mm" : 794,
+        boxSizing: "border-box",
+        margin: "0 auto",
+        padding: forPrint ? 14 : 32,
+        borderRadius: forPrint ? 0 : 8,
+        fontFamily: "'Inter',sans-serif",
+        border: forPrint ? "none" : "1px solid #eee",
+        fontSize: forPrint ? 11.5 : 13,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 16, borderBottom: "2px solid #0F4B3A", paddingBottom: forPrint ? 10 : 18, marginBottom: forPrint ? 10 : 18 }}>
+        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          {business?.logoUrl && <img src={business.logoUrl} crossOrigin="anonymous" style={{ width: forPrint ? 44 : 64, height: forPrint ? 44 : 64, objectFit: "contain", border: "1px solid #eee", borderRadius: 8 }} />}
+          <div>
+            <div style={{ fontSize: forPrint ? 17 : 22, fontWeight: 700, color: "#0F4B3A" }}>{business?.name || "Business"}</div>
+            <div style={{ color: "#666", fontSize: forPrint ? 10.5 : 12.5 }}>{business?.tagline || ""}</div>
+          </div>
+        </div>
+        <div style={{ textAlign: "right", fontSize: forPrint ? 10.5 : 12.5, color: "#333" }}>
+          <div>No: <b>{bill.invoiceNumber || "—"}</b></div>
+          <div>Date: <b>{fmtDate(bill.date)}</b></div>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: forPrint ? 10 : 18, fontSize: forPrint ? 10.5 : 12.5 }}>
+        <div style={{ border: "1px solid #eee", borderRadius: 8, padding: forPrint ? 8 : 12 }}>
+          <b>🏢 Business Details</b>
+          <div style={{ marginTop: 6, lineHeight: 1.7 }}>
+            Address: {business?.address || "N/A"}<br />
+            GSTIN: {business?.gstin || "N/A"}<br />
+            Phone: {business?.phone || "N/A"}<br />
+            Email: {business?.email || "N/A"}
+          </div>
+        </div>
+        <div style={{ border: "1px solid #eee", borderRadius: 8, padding: forPrint ? 8 : 12 }}>
+          <b>👤 Customer Details</b>
+          <div style={{ marginTop: 6, lineHeight: 1.7 }}>
+            Name: {bill.customerName || "Walk-in"}<br />
+            Phone: {bill.customerPhone || "N/A"}<br />
+            {bill.customerAadhar ? <>Aadhar: {bill.customerAadhar}<br /></> : null}
+            Address: {bill.customerAddress || "N/A"}
+          </div>
+        </div>
+      </div>
+
+      {bill.type === "sale" && (bill.items || []).some((it) => it.model || it.color || it.batteryType || it.motorPower || it.range || it.wheelSize) && (
+        <div style={{ border: "1px solid #eee", borderRadius: 8, padding: forPrint ? 8 : 12, marginBottom: forPrint ? 10 : 18 }}>
+          <b style={{ fontSize: forPrint ? 10.5 : 12.5 }}>🔧 Vehicle Specifications</b>
+          {(bill.items || []).map((it, i) => (
+            <div key={i} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(100px,1fr))", gap: 6, marginTop: 6, fontSize: forPrint ? 9.5 : 11.5 }}>
+              <div>MODEL<br /><b>{it.model || "N/A"}</b></div>
+              <div>COLOR<br /><b>{it.color || "N/A"}</b></div>
+              <div>BATTERY<br /><b>{it.batteryType || "N/A"}</b></div>
+              <div>MOTOR<br /><b>{it.motorPower || "N/A"}</b></div>
+              <div>RANGE<br /><b>{it.range || "N/A"}</b></div>
+              <div>WHEEL<br /><b>{it.wheelSize || "N/A"}</b></div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: forPrint ? 10.5 : 12.5, marginBottom: forPrint ? 10 : 18 }}>
+        <thead>
+          <tr style={{ background: "#0F4B3A", color: "#fff" }}>
+            <th style={{ padding: forPrint ? 5 : 8, textAlign: "left" }}>Item</th>
+            <th style={{ padding: forPrint ? 5 : 8, textAlign: "left" }}>Description</th>
+            <th style={{ padding: forPrint ? 5 : 8, textAlign: "right" }}>Qty</th>
+            <th style={{ padding: forPrint ? 5 : 8, textAlign: "right" }}>Price</th>
+            <th style={{ padding: forPrint ? 5 : 8, textAlign: "right" }}>Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(bill.items || []).map((it, i) => (
+            <tr key={i}>
+              <td style={{ border: "1px solid #ddd", padding: forPrint ? 5 : 8, fontWeight: 600 }}>{it.name}</td>
+              <td style={{ border: "1px solid #ddd", padding: forPrint ? 5 : 8, fontSize: forPrint ? 9.5 : 11.5 }}>
+                {it.chassisNo ? <>Chassis: {it.chassisNo}<br /></> : null}
+                {it.motorNo ? <>Motor: {it.motorNo}<br /></> : null}
+                {bill.type !== "sale" && bill.serviceDesc ? bill.serviceDesc : null}
+                <span style={{ color: "#0F4B3A" }}>GST included</span>
+              </td>
+              <td style={{ border: "1px solid #ddd", padding: forPrint ? 5 : 8, textAlign: "right" }}>{it.qty}</td>
+              <td style={{ border: "1px solid #ddd", padding: forPrint ? 5 : 8, textAlign: "right" }}>{inr(it.sellingPrice)}</td>
+              <td style={{ border: "1px solid #ddd", padding: forPrint ? 5 : 8, textAlign: "right", fontWeight: 600 }}>{inr(it.sellingPrice * it.qty)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <div style={{ border: "1px solid #eee", borderRadius: 8, padding: forPrint ? 10 : 14, width: forPrint ? 220 : 280, fontSize: forPrint ? 11 : 13 }}>
+          <div style={{ marginBottom: 8 }}>
+            <span style={{ background: "#eef7ee", color: "#0F4B3A", padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700 }}>
+              {(bill.paymentMode || "Cash").toUpperCase()}
+            </span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}><span>Subtotal</span><span>{inr(bill.subtotal)}</span></div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}><span>GST ({bill.gstRate}%)</span><span>{inr(bill.gstAmount)}</span></div>
+          <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #ddd", marginTop: 8, paddingTop: 8, fontWeight: 700, color: "#0F4B3A", fontSize: forPrint ? 13 : 15 }}>
+            <span>TOTAL</span><span>{inr(bill.total)}</span>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ border: "1px solid #f0d98c", background: "#fffbea", borderRadius: 8, padding: forPrint ? 8 : 12, marginTop: forPrint ? 10 : 18, fontSize: forPrint ? 10 : 12 }}>
+        <b>Warranty Information</b>
+        <div style={{ marginTop: 4, whiteSpace: "pre-line" }}>
+          Motor, Controller & Charger Warranty: 12 Months{"\n"}Battery Warranty: 12 Months
+        </div>
+      </div>
+
+      <div style={{ textAlign: "center", marginTop: forPrint ? 16 : 30, fontSize: forPrint ? 10 : 12, color: "#555" }}>
+        <div>If you have any questions about this invoice, please contact us at {business?.phone || "N/A"}</div>
+        <div style={{ fontWeight: 700, marginTop: 4 }}>Thank you!</div>
+        <div style={{ textAlign: "right", marginTop: forPrint ? 22 : 40 }}>
+          _______________________<br />
+          Authorized Signatory<br />
+          <b>{business?.name || "Business"}</b>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function Billing({ business }) {
   usePrintStyles();
+  const printRoot = usePrintRoot();
+  const previewRef = useRef(null);
   const [toastNode, showToast] = useToast();
 
   const [mode, setMode] = useState("list"); // list | create | edit | view
@@ -194,9 +275,12 @@ export default function Billing({ business }) {
   const [editingId, setEditingId] = useState(null);
   const [viewing, setViewing] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   const loadBills = useCallback(() => api.get("/bills").then((res) => setBills(res.data)), []);
+  // Only scooters still in stock show up as pickable — once one is sold
+  // through a bill it's deleted from the catalogue (see saveBill below), so
+  // it naturally drops out of this list and out of the Catalogue tab, while
+  // still being visible in Sales via the bill record that was already saved.
   const loadScooters = useCallback(() => api.get("/scooters").then((res) => setScooters(res.data)), []);
 
   useEffect(() => {
@@ -206,15 +290,22 @@ export default function Billing({ business }) {
 
   useEffect(() => {
     const refresh = () => loadBills();
+    const refreshScooters = () => loadScooters();
     socket.on("bill:created", refresh);
     socket.on("bill:updated", refresh);
     socket.on("bill:deleted", refresh);
+    socket.on("scooter:created", refreshScooters);
+    socket.on("scooter:updated", refreshScooters);
+    socket.on("scooter:deleted", refreshScooters);
     return () => {
       socket.off("bill:created", refresh);
       socket.off("bill:updated", refresh);
       socket.off("bill:deleted", refresh);
+      socket.off("scooter:created", refreshScooters);
+      socket.off("scooter:updated", refreshScooters);
+      socket.off("scooter:deleted", refreshScooters);
     };
-  }, [loadBills]);
+  }, [loadBills, loadScooters]);
 
   const totals = useMemo(() => computeTotals(draft.items, draft.gstRate), [draft.items, draft.gstRate]);
 
@@ -236,7 +327,7 @@ export default function Billing({ business }) {
       paymentMode: bill.paymentMode || "Cash",
     });
     setEditingId(bill._id);
-    setMode("edit");
+    setMode("edit"); // internal state switch only, never a URL route, so this can't 404
   };
 
   const openView = (bill) => { setViewing(bill); setMode("view"); };
@@ -280,6 +371,22 @@ export default function Billing({ business }) {
     paymentMode: draft.paymentMode,
   });
 
+  // After a bill is created (not edited — see note below), any item that was
+  // picked from the catalogue (item.scooter is set) gets removed from the
+  // catalogue since it's now sold. The bill itself already has a full
+  // snapshot of that item's details, so it keeps showing correctly under
+  // Sales even after the catalogue entry is gone.
+  const removeSoldScootersFromCatalogue = async (items) => {
+    const soldScooterIds = (items || [])
+      .filter((it) => it.scooter)
+      .map((it) => it.scooter);
+    if (soldScooterIds.length === 0) return;
+    await Promise.all(
+      soldScooterIds.map((id) => api.delete(`/scooters/${id}`).catch(() => {}))
+    );
+    loadScooters();
+  };
+
   const saveBill = async (e) => {
     e.preventDefault();
     if (!draft.customerName || !draft.customerPhone) {
@@ -301,9 +408,13 @@ export default function Billing({ business }) {
       if (mode === "edit" && editingId) {
         res = await api.put(`/bills/${editingId}`, payload);
         showToast("Bill updated");
+        // Not removing scooters here — editing an existing bill shouldn't
+        // re-trigger a catalogue removal for items that may have already
+        // been removed (or weren't part of the original sale).
       } else {
         res = await api.post("/bills", payload);
         showToast("Bill created");
+        await removeSoldScootersFromCatalogue(draft.items);
       }
       setViewing(res.data);
       setMode("view");
@@ -353,87 +464,35 @@ export default function Billing({ business }) {
     window.open(phone ? `https://wa.me/${phone}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
   };
 
-  // Renders #bill-preview to a canvas and saves it as a paginated A4 PDF.
-  // Takes the bill explicitly (rather than relying on closure state) since
-  // it's invoked from the "view" screen where `bill` is a local const there.
   const downloadPDF = async (bill) => {
-    const input = document.getElementById("bill-preview");
-    if (!input) {
-      showToast("Invoice element not found", "error");
-      return;
-    }
-
-    setDownloadingPdf(true);
+    const node = previewRef.current;
+    if (!node) return showToast("Invoice element not found", "error");
+    showToast("Generating PDF…");
     try {
-      const clone = input.cloneNode(true);
-
-      Object.assign(clone.style, {
-        width: "794px",
-        minHeight: "auto",
-        height: "auto",
-        padding: "32px",
-        position: "fixed",
-        left: "0",
-        top: "0",
-        zIndex: "-9999",
-        opacity: "1",
-        background: "#ffffff",
-        boxShadow: "none",
-        borderRadius: "0",
-      });
-
-      document.body.appendChild(clone);
-
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
-      const canvas = await html2canvas(clone, {
+      const canvas = await html2canvas(node, {
         scale: 2,
         useCORS: true,
         backgroundColor: "#ffffff",
-        windowWidth: clone.scrollWidth,
-        windowHeight: clone.scrollHeight,
-        scrollX: 0,
-        scrollY: 0,
       });
 
-      clone.remove();
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageW = 210, pageH = 297, margin = 8;
+      const maxW = pageW - margin * 2, maxH = pageH - margin * 2;
 
-      const pdf = new jsPDF({
-        orientation: "portrait",
-        unit: "mm",
-        format: "a4",
-      });
+      const ratio = canvas.width / canvas.height;
+      let w = maxW, h = w / ratio;
+      if (h > maxH) { h = maxH; w = h * ratio; }
+      const x = (pageW - w) / 2, y = margin;
 
-      const pdfWidth = 210;
-      const pdfHeight = 297;
-      const margin = 8;
-      const contentWidth = pdfWidth - margin * 2;
-      const imageHeight = (canvas.height * contentWidth) / canvas.width;
-      const pageContentHeight = pdfHeight - margin * 2;
-      const imageData = canvas.toDataURL("image/jpeg", 0.95);
+      const imgData = canvas.toDataURL("image/jpeg", 0.95);
+      pdf.addImage(imgData, "JPEG", x, y, w, h);
 
-      let heightLeft = imageHeight;
-      let position = margin;
-
-      pdf.addImage(imageData, "JPEG", margin, position, contentWidth, imageHeight);
-      heightLeft -= pageContentHeight;
-
-      while (heightLeft > 0) {
-        pdf.addPage();
-        position = margin + heightLeft - imageHeight;
-        pdf.addImage(imageData, "JPEG", margin, position, contentWidth, imageHeight);
-        heightLeft -= pageContentHeight;
-      }
-
-      const customerName = (bill?.customerName || "Customer").replace(/[^a-zA-Z0-9]/g, "_");
-      pdf.save(`Invoice_${customerName}_${bill?.invoiceNumber || "Invoice"}.pdf`);
-
+      const customerName = (bill.customerName || "Customer").replace(/[^a-zA-Z0-9]/g, "_");
+      pdf.save(`Invoice_${customerName}_${bill.invoiceNumber || "Invoice"}.pdf`);
       showToast("PDF downloaded successfully");
     } catch (error) {
       console.error("PDF error:", error);
       showToast("Failed to download PDF", "error");
-    } finally {
-      setDownloadingPdf(false);
     }
   };
 
@@ -453,27 +512,25 @@ export default function Billing({ business }) {
             {bills.length} total
           </span>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              onClick={openCreate}
+              style={S.primaryBtn}
+            >
+              <Plus size={16} />
+              New bill
+            </button>
 
-  <button
-    onClick={openCreate}
-    style={S.primaryBtn}
-  >
-    <Plus size={16} />
-    New bill
-  </button>
-
-  <button
-    onClick={() => {
-      setLoading(true);
-      loadBills().finally(() => setLoading(false));
-    }}
-    style={S.ghostBtn}
-  >
-    <RefreshCw size={15} />
-    Refresh
-  </button>
-
-</div>
+            <button
+              onClick={() => {
+                setLoading(true);
+                loadBills().finally(() => setLoading(false));
+              }}
+              style={S.ghostBtn}
+            >
+              <RefreshCw size={15} />
+              Refresh
+            </button>
+          </div>
         </div>
 
         <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
@@ -557,7 +614,9 @@ export default function Billing({ business }) {
           </div>
           <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
             <select onChange={(e) => { if (e.target.value) { addItem(e.target.value); e.target.value = ""; } }} style={{ ...S.input, flex: 1, minWidth: 200 }} defaultValue="">
-              <option value="" disabled>Add scooter from catalogue…</option>
+              <option value="" disabled>
+                {scooters.length === 0 ? "No scooters in stock" : "Add scooter from catalogue…"}
+              </option>
               {scooters.map((s) => <option key={s._id} value={s._id}>{s.name} — {inr(s.sellingPrice)}</option>)}
             </select>
             {draft.type !== "sale" && (
@@ -568,7 +627,7 @@ export default function Billing({ business }) {
           {draft.items.map((it, idx) => (
             <div key={idx} style={{ background: "#12151A", border: "1px solid #232833", borderRadius: 10, padding: 12, marginTop: 10 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                <b style={{ fontSize: 13 }}>Item {idx + 1}</b>
+                <b style={{ fontSize: 13 }}>Item {idx + 1}{it.scooter ? " · from catalogue" : ""}</b>
                 <button type="button" onClick={() => removeItem(idx)} style={{ background: "none", border: "none", color: "#FF6B6B", cursor: "pointer" }}><Trash2 size={14} /></button>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
@@ -600,6 +659,11 @@ export default function Billing({ business }) {
                 <label style={{ fontSize: 11, color: "#5A616F" }}>Cost price (internal, not shown on invoice)</label>
                 <input type="number" value={it.actualPrice} onChange={(e) => updateItem(idx, "actualPrice", Number(e.target.value) || 0)} placeholder="0" style={{ ...S.input, marginTop: 4 }} />
               </div>
+              {it.scooter && (
+                <div style={{ marginTop: 8, fontSize: 11, color: "#8FAE2A" }}>
+                  This item will be removed from the catalogue once the bill is created.
+                </div>
+              )}
             </div>
           ))}
 
@@ -636,650 +700,26 @@ export default function Billing({ business }) {
 
   /* ============================= VIEW ============================= */
   const bill = viewing;
-
-  if (!bill) {
-    setMode("list");
-    return null;
-  }
+  if (!bill) { setMode("list"); return null; }
 
   return (
     <div>
-      {/* ACTION BUTTONS - NOT PRINTED */}
-      <div
-        className="no-print"
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          justifyContent: "space-between",
-          gap: 10,
-          marginBottom: 16,
-        }}
-      >
-        <button onClick={backToList} style={S.ghostBtn}>
-          <ArrowLeft size={15} />
-          Back
-        </button>
-
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            flexWrap: "wrap",
-          }}
-        >
-          <button onClick={() => openEdit(bill)} style={S.ghostBtn}>
-            <Pencil size={14} />
-            Edit Bill
-          </button>
-
-          <button
-            onClick={() => shareWhatsApp(bill)}
-            style={{
-              ...S.primaryBtn,
-              background: "#25D366",
-              color: "#fff",
-            }}
-          >
-            <MessageCircle size={15} />
-            WhatsApp
-          </button>
-
-          <button
-            onClick={() => downloadPDF(bill)}
-            disabled={downloadingPdf}
-            style={{
-              ...S.primaryBtn,
-              background: "#3D8BFD",
-              color: "#fff",
-              opacity: downloadingPdf ? 0.6 : 1,
-            }}
-          >
-            <Download size={15} />
-            {downloadingPdf ? "Generating…" : "Download PDF"}
-          </button>
-
-          <button
-            onClick={() => window.print()}
-            style={{
-              ...S.primaryBtn,
-              background: "#12151A",
-              color: "#fff",
-              border: "1px solid #2A2F3A",
-            }}
-          >
-            <Printer size={14} />
-            Print Bill
-          </button>
+      <div className="no-print" style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 10, marginBottom: 16 }}>
+        <button onClick={backToList} style={S.ghostBtn}><ArrowLeft size={15} /> Back</button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={() => openEdit(bill)} style={S.ghostBtn}><Pencil size={14} /> Edit Bill</button>
+          <button onClick={() => shareWhatsApp(bill)} style={{ ...S.primaryBtn, background: "#25D366", color: "#fff" }}><MessageCircle size={15} /> WhatsApp</button>
+          <button onClick={() => downloadPDF(bill)} style={{ ...S.primaryBtn, background: "#3D8BFD", color: "#fff" }}><Download size={15} /> Download PDF</button>
+          <button onClick={() => window.print()} style={{ ...S.primaryBtn, background: "#12151A", color: "#fff", border: "1px solid #2A2F3A" }}><Printer size={14} /> Print Bill</button>
         </div>
       </div>
 
-      {/* INVOICE */}
-      <div
-        id="bill-preview"
-        style={{
-          width: "794px",
-          maxWidth: "100%",
-          minHeight: "1123px",
+      {/* On-screen copy — also the PDF capture target via previewRef */}
+      <InvoiceCard bill={bill} business={business} innerRef={previewRef} />
 
-          margin: "0 auto",
-          padding: "20px 24px",
-
-          boxSizing: "border-box",
-
-          background: "#ffffff",
-          color: "#12151A",
-          border: "1px solid #e5e7eb",
-          borderRadius: 6,
-
-          fontFamily: "'Inter', sans-serif",
-
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-
-        {/* HEADER */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            gap: 16,
-
-            borderBottom: "2px solid #0F4B3A",
-            paddingBottom: 12,
-            marginBottom: 14,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              gap: 10,
-              alignItems: "center",
-              minWidth: 0,
-            }}
-          >
-            {business?.logoUrl && (
-              <img
-                src={business.logoUrl}
-                crossOrigin="anonymous"
-                alt="Business Logo"
-                style={{
-                  width: 52,
-                  height: 52,
-                  objectFit: "contain",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: 6,
-                  flexShrink: 0,
-                }}
-              />
-            )}
-
-            <div>
-              <div
-                style={{
-                  fontSize: 20,
-                  fontWeight: 700,
-                  color: "#0F4B3A",
-                  lineHeight: 1.2,
-                }}
-              >
-                {business?.name || "Business"}
-              </div>
-
-              {business?.tagline && (
-                <div
-                  style={{
-                    color: "#666",
-                    fontSize: 11,
-                    marginTop: 3,
-                  }}
-                >
-                  {business.tagline}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div
-            style={{
-              textAlign: "right",
-              fontSize: 11,
-              color: "#333",
-              flexShrink: 0,
-              lineHeight: 1.6,
-            }}
-          >
-            <div>
-              No: <b>{bill.invoiceNumber || "—"}</b>
-            </div>
-
-            <div>
-              Date: <b>{fmtDate(bill.date)}</b>
-            </div>
-          </div>
-        </div>
-
-        {/* BUSINESS + CUSTOMER */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 10,
-            marginBottom: 12,
-            fontSize: 11,
-          }}
-        >
-          <div
-            style={{
-              border: "1px solid #e5e7eb",
-              borderRadius: 6,
-              padding: 9,
-            }}
-          >
-            <b style={{ fontSize: 11.5 }}>
-              🏢 Business Details
-            </b>
-
-            <div
-              style={{
-                marginTop: 5,
-                lineHeight: 1.55,
-              }}
-            >
-              Address: {business?.address || "N/A"}
-              <br />
-
-              GSTIN: {business?.gstin || "N/A"}
-              <br />
-
-              Phone: {business?.phone || "N/A"}
-              <br />
-
-              Email: {business?.email || "N/A"}
-            </div>
-          </div>
-
-          <div
-            style={{
-              border: "1px solid #e5e7eb",
-              borderRadius: 6,
-              padding: 9,
-            }}
-          >
-            <b style={{ fontSize: 11.5 }}>
-              👤 Customer Details
-            </b>
-
-            <div
-              style={{
-                marginTop: 5,
-                lineHeight: 1.55,
-              }}
-            >
-              Name: {bill.customerName || "Walk-in"}
-              <br />
-
-              Phone: {bill.customerPhone || "N/A"}
-              <br />
-
-              {bill.customerAadhar && (
-                <>
-                  Aadhar: {bill.customerAadhar}
-                  <br />
-                </>
-              )}
-
-              Address: {bill.customerAddress || "N/A"}
-            </div>
-          </div>
-        </div>
-
-        {/* VEHICLE SPECIFICATIONS */}
-        {bill.type === "sale" &&
-          (bill.items || []).some(
-            (it) =>
-              it.model ||
-              it.color ||
-              it.batteryType ||
-              it.motorPower ||
-              it.range ||
-              it.wheelSize
-          ) && (
-            <div
-              style={{
-                border: "1px solid #e5e7eb",
-                borderRadius: 6,
-                padding: 9,
-                marginBottom: 12,
-              }}
-            >
-              <b style={{ fontSize: 11.5 }}>
-                🔧 Vehicle Specifications
-              </b>
-
-              {(bill.items || []).map((it, i) => (
-                <div
-                  key={i}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns:
-                      "repeat(6, minmax(0, 1fr))",
-                    gap: 6,
-                    marginTop: 7,
-                    fontSize: 9.5,
-                  }}
-                >
-                  <div>
-                    <span style={{ color: "#777" }}>
-                      MODEL
-                    </span>
-                    <br />
-                    <b>{it.model || "N/A"}</b>
-                  </div>
-
-                  <div>
-                    <span style={{ color: "#777" }}>
-                      COLOR
-                    </span>
-                    <br />
-                    <b>{it.color || "N/A"}</b>
-                  </div>
-
-                  <div>
-                    <span style={{ color: "#777" }}>
-                      BATTERY
-                    </span>
-                    <br />
-                    <b>{it.batteryType || "N/A"}</b>
-                  </div>
-
-                  <div>
-                    <span style={{ color: "#777" }}>
-                      MOTOR
-                    </span>
-                    <br />
-                    <b>{it.motorPower || "N/A"}</b>
-                  </div>
-
-                  <div>
-                    <span style={{ color: "#777" }}>
-                      RANGE
-                    </span>
-                    <br />
-                    <b>{it.range || "N/A"}</b>
-                  </div>
-
-                  <div>
-                    <span style={{ color: "#777" }}>
-                      WHEEL
-                    </span>
-                    <br />
-                    <b>{it.wheelSize || "N/A"}</b>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-        {/* ITEMS TABLE */}
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            fontSize: 10.5,
-            marginBottom: 12,
-          }}
-        >
-          <thead>
-            <tr
-              style={{
-                background: "#0F4B3A",
-                color: "#ffffff",
-              }}
-            >
-              <th
-                style={{
-                  padding: 7,
-                  textAlign: "left",
-                }}
-              >
-                Item
-              </th>
-
-              <th
-                style={{
-                  padding: 7,
-                  textAlign: "left",
-                }}
-              >
-                Description
-              </th>
-
-              <th
-                style={{
-                  padding: 7,
-                  textAlign: "right",
-                }}
-              >
-                Qty
-              </th>
-
-              <th
-                style={{
-                  padding: 7,
-                  textAlign: "right",
-                }}
-              >
-                Price
-              </th>
-
-              <th
-                style={{
-                  padding: 7,
-                  textAlign: "right",
-                }}
-              >
-                Amount
-              </th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {(bill.items || []).map((it, i) => (
-              <tr key={i}>
-                <td
-                  style={{
-                    border: "1px solid #ddd",
-                    padding: 7,
-                    fontWeight: 600,
-                  }}
-                >
-                  {it.name}
-                </td>
-
-                <td
-                  style={{
-                    border: "1px solid #ddd",
-                    padding: 7,
-                    fontSize: 9.5,
-                    lineHeight: 1.4,
-                  }}
-                >
-                  {it.chassisNo && (
-                    <>
-                      Chassis: {it.chassisNo}
-                      <br />
-                    </>
-                  )}
-
-                  {it.motorNo && (
-                    <>
-                      Motor: {it.motorNo}
-                      <br />
-                    </>
-                  )}
-
-                  {bill.type !== "sale" &&
-                    bill.serviceDesc && (
-                      <>
-                        {bill.serviceDesc}
-                        <br />
-                      </>
-                    )}
-
-                  <span
-                    style={{
-                      color: "#0F4B3A",
-                    }}
-                  >
-                    GST included
-                  </span>
-                </td>
-
-                <td
-                  style={{
-                    border: "1px solid #ddd",
-                    padding: 7,
-                    textAlign: "right",
-                  }}
-                >
-                  {it.qty}
-                </td>
-
-                <td
-                  style={{
-                    border: "1px solid #ddd",
-                    padding: 7,
-                    textAlign: "right",
-                  }}
-                >
-                  {inr(it.sellingPrice)}
-                </td>
-
-                <td
-                  style={{
-                    border: "1px solid #ddd",
-                    padding: 7,
-                    textAlign: "right",
-                    fontWeight: 600,
-                  }}
-                >
-                  {inr(
-                    Number(it.sellingPrice || 0) *
-                      Number(it.qty || 1)
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {/* TOTALS */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            marginBottom: 10,
-          }}
-        >
-          <div
-            style={{
-              border: "1px solid #e5e7eb",
-              borderRadius: 6,
-              padding: 10,
-              width: 250,
-              fontSize: 11,
-            }}
-          >
-            <div style={{ marginBottom: 6 }}>
-              <span
-                style={{
-                  background: "#eef7ee",
-                  color: "#0F4B3A",
-                  padding: "3px 8px",
-                  borderRadius: 14,
-                  fontSize: 9.5,
-                  fontWeight: 700,
-                }}
-              >
-                {(bill.paymentMode || "Cash").toUpperCase()}
-              </span>
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginBottom: 4,
-              }}
-            >
-              <span>Subtotal</span>
-              <span>{inr(bill.subtotal)}</span>
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-              }}
-            >
-              <span>
-                GST ({Number(bill.gstRate || 0)}%)
-              </span>
-
-              <span>{inr(bill.gstAmount)}</span>
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                borderTop: "1px solid #ddd",
-                marginTop: 6,
-                paddingTop: 6,
-                fontWeight: 700,
-                color: "#0F4B3A",
-                fontSize: 13,
-              }}
-            >
-              <span>TOTAL</span>
-
-              <span>{inr(bill.total)}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* WARRANTY */}
-        <div
-          style={{
-            border: "1px solid #f0d98c",
-            background: "#fffbea",
-            borderRadius: 6,
-            padding: 8,
-            marginTop: 8,
-            fontSize: 9.5,
-          }}
-        >
-          <b>Warranty Information</b>
-
-          <div
-            style={{
-              marginTop: 3,
-              lineHeight: 1.4,
-            }}
-          >
-            Motor, Controller & Charger Warranty: 12 Months
-            <br />
-            Battery Warranty: 12 Months
-          </div>
-        </div>
-
-        {/* FOOTER + SIGNATURE */}
-        <div
-          style={{
-            marginTop: 12,
-            fontSize: 9.5,
-            color: "#555",
-          }}
-        >
-          <div
-            style={{
-              textAlign: "center",
-            }}
-          >
-            If you have any questions about this invoice, please contact us at{" "}
-            {business?.phone || "N/A"}
-
-            <div
-              style={{
-                fontWeight: 700,
-                marginTop: 3,
-              }}
-            >
-              Thank you!
-            </div>
-          </div>
-
-          <div
-            style={{
-              textAlign: "right",
-              marginTop: 12,
-              lineHeight: 1.35,
-            }}
-          >
-            _____________________
-            <br />
-
-            Authorized Signatory
-            <br />
-
-            <b>
-              {business?.name || "Business"}
-            </b>
-          </div>
-        </div>
-      </div>
+      {/* Print-only copy, portaled outside #root so no app layout (sidebar,
+          topbar, padding) can ever leak blank space into the printed page */}
+      {printRoot && createPortal(<InvoiceCard bill={bill} business={business} forPrint />, printRoot)}
 
       {toastNode}
     </div>

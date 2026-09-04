@@ -37,7 +37,7 @@ const VEHICLE_SPEC_FIELDS = [
 function emptyItem() {
   return {
     scooter: null, name: "", description: "", chassisNo: "", motorNo: "",
-    model: "", color: "", batteryType: "", motorPower: "", range: "",
+    model: "", color: "", batteryType: "", batteryPrice: 0, motorPower: "", range: "",
     topSpeed: "", chargingTime: "", controller: "", wheelSize: "",
     actualPrice: 0, sellingPrice: 0, qty: 1,
   };
@@ -61,7 +61,7 @@ function emptyDraft(business) {
 
 // GST-inclusive: sellingPrice already includes GST.
 function computeTotals(items, gstRate) {
-  const grandTotal = items.reduce((s, it) => s + Number(it.sellingPrice || 0) * Number(it.qty || 1), 0);
+  const grandTotal = items.reduce((s, it) => s + (Number(it.sellingPrice || 0) + Number(it.batteryPrice || 0)) * Number(it.qty || 1), 0);
   const rate = Number(gstRate) || 0;
   const gstAmount = rate > 0 ? +((grandTotal * rate) / (100 + rate)).toFixed(2) : 0;
   const subtotal = +(grandTotal - gstAmount).toFixed(2);
@@ -210,20 +210,24 @@ function InvoiceCard({ bill, business, innerRef, forPrint }) {
           </tr>
         </thead>
         <tbody>
-          {(bill.items || []).map((it, i) => (
-            <tr key={i}>
-              <td style={{ border: "1px solid #ddd", padding: forPrint ? 5 : 8, fontWeight: 600 }}>{it.name}</td>
-              <td style={{ border: "1px solid #ddd", padding: forPrint ? 5 : 8, fontSize: forPrint ? 9.5 : 11.5 }}>
-                {it.chassisNo ? <>Chassis: {it.chassisNo}<br /></> : null}
-                {it.motorNo ? <>Motor: {it.motorNo}<br /></> : null}
-                {bill.type !== "sale" && bill.serviceDesc ? bill.serviceDesc : null}
-                <span style={{ color: "#0F4B3A" }}>GST included</span>
-              </td>
-              <td style={{ border: "1px solid #ddd", padding: forPrint ? 5 : 8, textAlign: "right" }}>{it.qty}</td>
-              <td style={{ border: "1px solid #ddd", padding: forPrint ? 5 : 8, textAlign: "right" }}>{inr(it.sellingPrice)}</td>
-              <td style={{ border: "1px solid #ddd", padding: forPrint ? 5 : 8, textAlign: "right", fontWeight: 600 }}>{inr(it.sellingPrice * it.qty)}</td>
-            </tr>
-          ))}
+          {(bill.items || []).map((it, i) => {
+            const unitPrice = Number(it.sellingPrice || 0) + Number(it.batteryPrice || 0);
+            return (
+              <tr key={i}>
+                <td style={{ border: "1px solid #ddd", padding: forPrint ? 5 : 8, fontWeight: 600 }}>{it.name}</td>
+                <td style={{ border: "1px solid #ddd", padding: forPrint ? 5 : 8, fontSize: forPrint ? 9.5 : 11.5 }}>
+                  {it.chassisNo ? <>Chassis: {it.chassisNo}<br /></> : null}
+                  {it.motorNo ? <>Motor: {it.motorNo}<br /></> : null}
+                  {it.batteryType ? <>Battery: {it.batteryType}{it.batteryPrice ? ` (+${inr(it.batteryPrice)})` : ""}<br /></> : null}
+                  {bill.type !== "sale" && bill.serviceDesc ? bill.serviceDesc : null}
+                  <span style={{ color: "#0F4B3A" }}>GST included</span>
+                </td>
+                <td style={{ border: "1px solid #ddd", padding: forPrint ? 5 : 8, textAlign: "right" }}>{it.qty}</td>
+                <td style={{ border: "1px solid #ddd", padding: forPrint ? 5 : 8, textAlign: "right" }}>{inr(unitPrice)}</td>
+                <td style={{ border: "1px solid #ddd", padding: forPrint ? 5 : 8, textAlign: "right", fontWeight: 600 }}>{inr(unitPrice * it.qty)}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
 
@@ -346,8 +350,13 @@ export default function Billing({ business }) {
       items: [...d.items, {
         ...emptyItem(),
         scooter: sc._id, name: sc.name, chassisNo: sc.chassisNo, motorNo: sc.motorNo,
-        batteryType: sc.batteryInfo || "", warranty: sc.warranty || "",
-        actualPrice: Number(sc.actualPrice) || 0, sellingPrice: Number(sc.sellingPrice) || 0, qty: 1,
+        warranty: sc.warranty || "",
+        // Battery info/price, actual cost, and selling price are entered
+        // fresh for this sale — they're no longer stored on the catalogue
+        // entry since they can vary unit to unit. scooterPrice (if set) is
+        // just a starting suggestion the staff can adjust.
+        batteryType: "", batteryPrice: 0,
+        actualPrice: 0, sellingPrice: Number(sc.scooterPrice) || 0, qty: 1,
       }],
     }));
   };
@@ -454,9 +463,11 @@ export default function Billing({ business }) {
     if (bill.customerAddress) text += `Address: ${bill.customerAddress}\n`;
     text += `\n*Items*\n`;
     (bill.items || []).forEach((it, i) => {
-      text += `\n${i + 1}. *${it.name}*\nQty: ${it.qty}\nPrice: ${inr(it.sellingPrice)} (GST incl.)\nAmount: ${inr(it.sellingPrice * it.qty)}\n`;
+      const unitPrice = Number(it.sellingPrice || 0) + Number(it.batteryPrice || 0);
+      text += `\n${i + 1}. *${it.name}*\nQty: ${it.qty}\nPrice: ${inr(unitPrice)} (GST incl.)\nAmount: ${inr(unitPrice * it.qty)}\n`;
       if (it.model) text += `Model: ${it.model}\n`;
       if (it.color) text += `Color: ${it.color}\n`;
+      if (it.batteryType) text += `Battery: ${it.batteryType}\n`;
       if (it.chassisNo) text += `Chassis No: ${it.chassisNo}\n`;
       if (it.motorNo) text += `Motor No: ${it.motorNo}\n`;
     });
@@ -651,11 +662,20 @@ export default function Billing({ business }) {
                 <input value={it.motorNo} onChange={(e) => updateItem(idx, "motorNo", e.target.value)} placeholder="Motor no." style={{ ...S.input, flex: 1, minWidth: 120 }} />
               </div>
               {draft.type === "sale" && (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(110px,1fr))", gap: 6 }}>
-                  {VEHICLE_SPEC_FIELDS.map(([field, label]) => (
-                    <input key={field} value={it[field]} onChange={(e) => updateItem(idx, field, e.target.value)} placeholder={label} style={{ ...S.input, fontSize: 12, padding: "7px 9px" }} />
-                  ))}
-                </div>
+                <>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(110px,1fr))", gap: 6 }}>
+                    {VEHICLE_SPEC_FIELDS.filter(([field]) => field !== "batteryType").map(([field, label]) => (
+                      <input key={field} value={it[field]} onChange={(e) => updateItem(idx, field, e.target.value)} placeholder={label} style={{ ...S.input, fontSize: 12, padding: "7px 9px" }} />
+                    ))}
+                  </div>
+                  {/* Battery info + price — entered here per sale, not stored
+                      on the catalogue entry, since battery choice and price
+                      can differ from one sale to the next. */}
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+                    <input value={it.batteryType} onChange={(e) => updateItem(idx, "batteryType", e.target.value)} placeholder="Battery info (e.g. 60V 30Ah Lithium)" style={{ ...S.input, flex: 2, minWidth: 160, fontSize: 12, padding: "7px 9px" }} />
+                    <input type="number" value={it.batteryPrice} onChange={(e) => updateItem(idx, "batteryPrice", Number(e.target.value) || 0)} placeholder="Battery price (GST incl.)" style={{ ...S.input, flex: 1, minWidth: 130, fontSize: 12, padding: "7px 9px" }} />
+                  </div>
+                </>
               )}
               {draft.type !== "sale" && (
                 <textarea value={draft.serviceDesc} onChange={(e) => setDraft((d) => ({ ...d, serviceDesc: e.target.value }))} placeholder="Describe the work done" rows={2} style={{ ...S.input, marginTop: 4 }} />
