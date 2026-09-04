@@ -147,7 +147,7 @@ const expenseSchema = new mongoose.Schema(
   {
     owner: { type: mongoose.Schema.Types.ObjectId, ref: "Owner", required: true, index: true },
     date: { type: Date, required: true, default: Date.now },
-    name: { type: String, required: true, default: "" }, // e.g. "Rent", "Bill", "Parts" — was missing entirely before, so it was silently dropped on save
+    name: { type: String, default: "" }, // e.g. "Rent", "Bill", "Parts"
     category: { type: String, required: true },
     amount: { type: Number, required: true },
     location: { type: String, default: "" },
