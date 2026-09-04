@@ -646,44 +646,63 @@ export default function Billing({ business }) {
                 <b style={{ fontSize: 13 }}>Item {idx + 1}{it.scooter ? " · from catalogue" : ""}</b>
                 <button type="button" onClick={() => removeItem(idx)} style={{ background: "none", border: "none", color: "#FF6B6B", cursor: "pointer" }}><Trash2 size={14} /></button>
               </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
                 <div style={{ flex: 2, minWidth: 140 }}>
                   <input value={it.name} onChange={(e) => updateItem(idx, "name", e.target.value)} placeholder="Item name *" style={S.input} />
                 </div>
                 <div style={{ width: 70 }}>
                   <input type="number" min="1" value={it.qty} onChange={(e) => updateItem(idx, "qty", Number(e.target.value) || 1)} placeholder="Qty" style={S.input} />
                 </div>
-                <div style={{ width: 130 }}>
-                  <input type="number" value={it.sellingPrice} onChange={(e) => updateItem(idx, "sellingPrice", Number(e.target.value) || 0)} placeholder="Price (GST incl.) *" style={S.input} />
-                </div>
               </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
                 <input value={it.chassisNo} onChange={(e) => updateItem(idx, "chassisNo", e.target.value)} placeholder="Chassis no." style={{ ...S.input, flex: 1, minWidth: 120 }} />
                 <input value={it.motorNo} onChange={(e) => updateItem(idx, "motorNo", e.target.value)} placeholder="Motor no." style={{ ...S.input, flex: 1, minWidth: 120 }} />
               </div>
+
+              {/* Pricing — always visible and clearly labeled for every item type */}
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 10.5, color: "#5A616F", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 5 }}>Pricing (per unit)</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: 130 }}>
+                    <label style={{ fontSize: 11, color: "#8B93A1", display: "block", marginBottom: 4 }}>Actual (cost) price</label>
+                    <input type="number" value={it.actualPrice} onChange={(e) => updateItem(idx, "actualPrice", Number(e.target.value) || 0)} placeholder="0" style={S.input} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 130 }}>
+                    <label style={{ fontSize: 11, color: "#C4F135", display: "block", marginBottom: 4 }}>Selling price (GST incl.) *</label>
+                    <input type="number" value={it.sellingPrice} onChange={(e) => updateItem(idx, "sellingPrice", Number(e.target.value) || 0)} placeholder="0" style={S.input} />
+                  </div>
+                </div>
+              </div>
+
               {draft.type === "sale" && (
                 <>
+                  {/* Battery — entered here per sale, not stored on the
+                      catalogue entry, since battery choice and price can
+                      differ from one sale to the next. */}
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 10.5, color: "#5A616F", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 5 }}>Battery (this sale)</div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <div style={{ flex: 2, minWidth: 160 }}>
+                        <label style={{ fontSize: 11, color: "#8B93A1", display: "block", marginBottom: 4 }}>Battery info</label>
+                        <input value={it.batteryType} onChange={(e) => updateItem(idx, "batteryType", e.target.value)} placeholder="e.g. 60V 30Ah Lithium" style={S.input} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 130 }}>
+                        <label style={{ fontSize: 11, color: "#8B93A1", display: "block", marginBottom: 4 }}>Battery price (GST incl.)</label>
+                        <input type="number" value={it.batteryPrice} onChange={(e) => updateItem(idx, "batteryPrice", Number(e.target.value) || 0)} placeholder="0" style={S.input} />
+                      </div>
+                    </div>
+                  </div>
+
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(110px,1fr))", gap: 6 }}>
                     {VEHICLE_SPEC_FIELDS.filter(([field]) => field !== "batteryType").map(([field, label]) => (
                       <input key={field} value={it[field]} onChange={(e) => updateItem(idx, field, e.target.value)} placeholder={label} style={{ ...S.input, fontSize: 12, padding: "7px 9px" }} />
                     ))}
-                  </div>
-                  {/* Battery info + price — entered here per sale, not stored
-                      on the catalogue entry, since battery choice and price
-                      can differ from one sale to the next. */}
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
-                    <input value={it.batteryType} onChange={(e) => updateItem(idx, "batteryType", e.target.value)} placeholder="Battery info (e.g. 60V 30Ah Lithium)" style={{ ...S.input, flex: 2, minWidth: 160, fontSize: 12, padding: "7px 9px" }} />
-                    <input type="number" value={it.batteryPrice} onChange={(e) => updateItem(idx, "batteryPrice", Number(e.target.value) || 0)} placeholder="Battery price (GST incl.)" style={{ ...S.input, flex: 1, minWidth: 130, fontSize: 12, padding: "7px 9px" }} />
                   </div>
                 </>
               )}
               {draft.type !== "sale" && (
                 <textarea value={draft.serviceDesc} onChange={(e) => setDraft((d) => ({ ...d, serviceDesc: e.target.value }))} placeholder="Describe the work done" rows={2} style={{ ...S.input, marginTop: 4 }} />
               )}
-              <div style={{ marginTop: 6 }}>
-                <label style={{ fontSize: 11, color: "#5A616F" }}>Cost price (internal, not shown on invoice)</label>
-                <input type="number" value={it.actualPrice} onChange={(e) => updateItem(idx, "actualPrice", Number(e.target.value) || 0)} placeholder="0" style={{ ...S.input, marginTop: 4 }} />
-              </div>
               {it.scooter && (
                 <div style={{ marginTop: 8, fontSize: 11, color: "#8FAE2A" }}>
                   This item will be removed from the catalogue once the bill is created.
