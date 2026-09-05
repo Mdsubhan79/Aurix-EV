@@ -36,7 +36,7 @@ const VEHICLE_SPEC_FIELDS = [
 
 function emptyItem() {
   return {
-    scooter: null, name: "", description: "", chassisNo: "", motorNo: "",
+    scooter: null, name: "", description: "", chassisNo: "", motorNo: "", warranty: "",
     model: "", color: "", scooterPrice: 0, batteryType: "", batteryPrice: 0, motorPower: "", range: "",
     topSpeed: "", chargingTime: "", controller: "", wheelSize: "",
     actualPrice: 0, sellingPrice: 0, qty: 1,
@@ -110,7 +110,8 @@ function usePrintRoot() {
 
 function usePrintStyles() {
   useEffect(() => {
-    if (document.getElementById("bill-print-css")) return;
+    const existing = document.getElementById("bill-print-css");
+    if (existing) existing.remove(); // replace any stale copy from an older build
     const style = document.createElement("style");
     style.id = "bill-print-css";
     style.innerHTML = `
@@ -119,9 +120,23 @@ function usePrintStyles() {
         #bill-print-root { display: none !important; }
       }
       @media print {
-        html, body { margin: 0 !important; padding: 0 !important; height: auto !important; }
-        #root { display: none !important; }
-        #bill-print-root { display: block !important; margin: 0 !important; padding: 0 !important; }
+        html, body { margin: 0 !important; padding: 0 !important; height: auto !important; background: #fff !important; }
+        /* Hide every top-level element except the print node itself — this
+           doesn't depend on guessing the app's root element id (the old
+           "#root" guess was wrong for this app, which is why print came out
+           blank: the real root wasn't being hidden, but more importantly the
+           invoice copy could end up mis-targeted). */
+        body > *:not(#bill-print-root) { display: none !important; }
+        #bill-print-root {
+          display: block !important;
+          position: static !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          width: auto !important;
+          height: auto !important;
+          overflow: visible !important;
+        }
+        #bill-print-root * { visibility: visible !important; }
       }
     `;
     document.head.appendChild(style);
@@ -658,6 +673,10 @@ export default function Billing({ business }) {
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
                 <input value={it.chassisNo} onChange={(e) => updateItem(idx, "chassisNo", e.target.value)} placeholder="Chassis no." style={{ ...S.input, flex: 1, minWidth: 120 }} />
                 <input value={it.motorNo} onChange={(e) => updateItem(idx, "motorNo", e.target.value)} placeholder="Motor no." style={{ ...S.input, flex: 1, minWidth: 120 }} />
+              </div>
+              <div style={{ marginBottom: 10 }}>
+                <label style={{ fontSize: 11, color: "#8B93A1", display: "block", marginBottom: 4 }}>Warranty</label>
+                <input value={it.warranty} onChange={(e) => updateItem(idx, "warranty", e.target.value)} placeholder="e.g. 12 months" style={S.input} />
               </div>
 
               {draft.type === "sale" && (

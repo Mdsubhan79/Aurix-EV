@@ -396,7 +396,7 @@ function AppShell({ owner, business, setBusiness, tab, setTab, onLogout }) {
   }, []);
 
   return (
-    <div style={{ minHeight: "100vh", background: "#12151A", color: "#F2F3F0", fontFamily: "'Inter',sans-serif", display: "flex" }}>
+    <div id="voltline-app-shell" style={{ minHeight: "100vh", background: "#12151A", color: "#F2F3F0", fontFamily: "'Inter',sans-serif", display: "flex" }}>
       {!isMobile && <Sidebar tab={tab} setTab={setTab} business={business} onLogout={onLogout} />}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         <TopBar business={business} tab={tab} owner={owner} onLogout={onLogout} isMobile={isMobile} />
@@ -628,7 +628,7 @@ function TopBar({ business, tab, owner, onLogout, isMobile }) {
    8. DASHBOARD 
 ========================================================================= */
 function Dashboard({ setTab }) {
-  const [range, setRange] = useState("year");
+  const [range, setRange] = useState("month");
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
@@ -1340,6 +1340,7 @@ function Sales() {
                     <th style={S.th}>Battery</th>
                     <th style={S.th}>Warranty</th>
                     <th style={{ ...S.th, textAlign: "right" }}>Qty</th>
+                    <th style={{ ...S.th, textAlign: "right" }}>Scooter Price</th>
                     <th style={{ ...S.th, textAlign: "right" }}>Actual</th>
                     <th style={{ ...S.th, textAlign: "right" }}>Selling</th>
                     <th style={{ ...S.th, textAlign: "right" }}>Battery ₹</th>
@@ -1349,7 +1350,7 @@ function Sales() {
                 </thead>
                 <tbody>
                   {(b.items || []).length === 0 ? (
-                    <tr><td style={S.td} colSpan={11}>No item details on this bill.</td></tr>
+                    <tr><td style={S.td} colSpan={12}>No item details on this bill.</td></tr>
                   ) : (b.items || []).map((it, i) => (
                     <tr key={i} style={{ borderBottom: "1px solid #1E2430" }}>
                       <td style={S.td}>
@@ -1365,6 +1366,7 @@ function Sales() {
                       <td style={S.td}>{it.batteryType || "—"}</td>
                       <td style={S.td}>{it.warranty || "—"}</td>
                       <td style={{ ...S.td, textAlign: "right" }}>{it.qty}</td>
+                      <td style={{ ...S.td, textAlign: "right" }}>{it.scooterPrice ? inr(it.scooterPrice) : "—"}</td>
                       <td style={{ ...S.td, textAlign: "right" }}>{inr(it.actualPrice)}</td>
                       <td style={{ ...S.td, textAlign: "right" }}>{inr(it.sellingPrice)}</td>
                       <td style={{ ...S.td, textAlign: "right" }}>{it.batteryPrice ? inr(it.batteryPrice) : "—"}</td>
