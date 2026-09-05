@@ -628,7 +628,7 @@ function TopBar({ business, tab, owner, onLogout, isMobile }) {
    8. DASHBOARD 
 ========================================================================= */
 function Dashboard({ setTab }) {
-  const [range, setRange] = useState("month");
+  const [range, setRange] = useState("year");
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
@@ -1275,7 +1275,7 @@ export function Modal({ title, children, onClose }) {
    11. SALES
 ========================================================================= */
 function Sales() {
-  const [range, setRange] = useState("month");
+  const [range, setRange] = useState("year");
   const [bills, setBills] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -1409,7 +1409,7 @@ function getCategoryFromNote(note = "") {
 }
 
 function Expenses() {
-  const [range, setRange] = useState("month");
+  const [range, setRange] = useState("year");
   const [expenses, setExpenses] = useState([]);
   const [draft, setDraft] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1885,7 +1885,7 @@ function Expenses() {
 function emptyPartner() { return { name: "", phone: "", sharePercent: "" }; }
 
 function Partners({ business }) {
-  const [range, setRange] = useState("month");
+  const [range, setRange] = useState("year");
   const [partners, setPartners] = useState([]);
   const [bills, setBills] = useState([]);
   const [expenses, setExpenses] = useState([]);
