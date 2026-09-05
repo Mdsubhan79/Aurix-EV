@@ -798,11 +798,7 @@ function emptyScooter() {
     motorNo: "",
     features: "",
     warranty: "",
-    batteryInfo: "",
     scooterPrice: "",
-    batteryPrice: "",
-    actualPrice: "",
-    sellingPrice: "",
   };
 }
 
@@ -1084,32 +1080,38 @@ function Catalogue() {
                 <div
                   style={{
                     color: "#8B93A1",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  Actual:{" "}
+                  Warranty:{" "}
                   <b
                     style={{
                       color: "#F2F3F0",
                     }}
                   >
-                    {inr(s.actualPrice)}
+                    {s.warranty || "—"}
                   </b>
                 </div>
 
-                <div
-                  style={{
-                    color: "#8B93A1",
-                  }}
-                >
-                  Selling:{" "}
-                  <b
+                {Number(s.scooterPrice) > 0 && (
+                  <div
                     style={{
-                      color: "#C4F135",
+                      color: "#8B93A1",
+                      flexShrink: 0,
                     }}
                   >
-                    {inr(s.sellingPrice)}
-                  </b>
-                </div>
+                    Price:{" "}
+                    <b
+                      style={{
+                        color: "#C4F135",
+                      }}
+                    >
+                      {inr(s.scooterPrice)}
+                    </b>
+                  </div>
+                )}
               </div>
 
               <div
@@ -1275,13 +1277,12 @@ export function Modal({ title, children, onClose }) {
 function Sales() {
   const [range, setRange] = useState("month");
   const [bills, setBills] = useState([]);
-  const [scooters, setScooters] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(() => {
     setLoading(true);
-    Promise.all([api.get(`/bills?range=${range}`), api.get("/scooters")])
-      .then(([b, s]) => { setBills(b.data); setScooters(s.data); })
+    api.get(`/bills?range=${range}`)
+      .then((res) => setBills(Array.isArray(res.data) ? res.data : []))
       .finally(() => setLoading(false));
   }, [range]);
 
@@ -1294,8 +1295,11 @@ function Sales() {
     return () => { socket.off("bill:created", refresh); socket.off("bill:updated", refresh); socket.off("bill:deleted", refresh); };
   }, [load]);
 
-  const total = bills.reduce((s, b) => s + b.total, 0);
-  const profit = bills.reduce((s, b) => s + (b.items || []).reduce((x, it) => x + (it.sellingPrice - it.actualPrice) * it.qty, 0), 0);
+  const itemMargin = (it) => (Number(it.sellingPrice || 0) + Number(it.batteryPrice || 0) - Number(it.actualPrice || 0)) * Number(it.qty || 1);
+  const itemAmount = (it) => (Number(it.sellingPrice || 0) + Number(it.batteryPrice || 0)) * Number(it.qty || 1);
+
+  const total = bills.reduce((s, b) => s + Number(b.total || 0), 0);
+  const profit = bills.reduce((s, b) => s + (b.items || []).reduce((x, it) => x + itemMargin(it), 0), 0);
 
   return (
     <div>
@@ -1306,27 +1310,73 @@ function Sales() {
         <StatCard icon={IndianRupee} label="Total sales" value={inr(total)} accent="#C4F135" sub={`${bills.length} bills`} />
         <StatCard icon={TrendingUp} label="Total profit margin" value={inr(profit)} accent="#3D8BFD" />
       </div>
-      <div style={{ ...S.card, marginTop: 16, overflowX: "auto" }}>
-        <div style={S.cardTitle}>Bill-wise breakdown</div>
-        {loading ? <Empty text="Loading…" /> : bills.length === 0 ? <Empty text="No sales in this period." /> : (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, minWidth: 600 }}>
-            <thead><tr style={{ color: "#8B93A1", textAlign: "left" }}>
-              <th style={S.th}>Date</th><th style={S.th}>Customer</th><th style={S.th}>Location</th><th style={S.th}>Type</th><th style={S.th}>Total</th><th style={S.th}>Margin</th>
-            </tr></thead>
-            <tbody>
-              {bills.map((b) => (
-                <tr key={b._id} style={{ borderTop: "1px solid #232833" }}>
-                  <td style={S.td}>{fmtDate(b.date)}</td>
-                  <td style={S.td}>{b.customerName || "Walk-in"}</td>
-                  <td style={S.td}>{b.location || "—"}</td>
-                  <td style={S.td}>{b.type}</td>
-                  <td style={{ ...S.td, fontFamily: "'JetBrains Mono',monospace" }}>{inr(b.total)}</td>
-                  <td style={{ ...S.td, fontFamily: "'JetBrains Mono',monospace", color: "#C4F135" }}>{inr((b.items || []).reduce((x, it) => x + (it.sellingPrice - it.actualPrice) * it.qty, 0))}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+
+      <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+        {loading ? <Empty text="Loading…" /> : bills.length === 0 ? <Empty text="No sales in this period." /> : bills.map((b) => (
+          <div key={b._id} style={S.card}>
+            {/* Bill header */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 14.5 }}>{b.customerName || "Walk-in"}</div>
+                <div style={{ color: "#5A616F", fontSize: 11.5, marginTop: 2 }}>
+                  {fmtDate(b.date)} · {b.location || "—"} · <span style={{ textTransform: "capitalize" }}>{b.type}</span>
+                  {b.invoiceNumber ? ` · ${b.invoiceNumber}` : ""}
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontFamily: "'JetBrains Mono',monospace", fontWeight: 700, color: "#C4F135", fontSize: 15 }}>{inr(b.total)}</div>
+                <div style={{ color: "#5A616F", fontSize: 11 }}>{(b.paymentMode || "Cash")}</div>
+              </div>
+            </div>
+
+            {/* Full catalogue/item detail table */}
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 760 }}>
+                <thead>
+                  <tr style={{ color: "#8B93A1", textAlign: "left", borderTop: "1px solid #232833", borderBottom: "1px solid #232833" }}>
+                    <th style={S.th}>Item</th>
+                    <th style={S.th}>Chassis No</th>
+                    <th style={S.th}>Motor No</th>
+                    <th style={S.th}>Battery</th>
+                    <th style={S.th}>Warranty</th>
+                    <th style={{ ...S.th, textAlign: "right" }}>Qty</th>
+                    <th style={{ ...S.th, textAlign: "right" }}>Actual</th>
+                    <th style={{ ...S.th, textAlign: "right" }}>Selling</th>
+                    <th style={{ ...S.th, textAlign: "right" }}>Battery ₹</th>
+                    <th style={{ ...S.th, textAlign: "right" }}>Amount</th>
+                    <th style={{ ...S.th, textAlign: "right" }}>Margin</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(b.items || []).length === 0 ? (
+                    <tr><td style={S.td} colSpan={11}>No item details on this bill.</td></tr>
+                  ) : (b.items || []).map((it, i) => (
+                    <tr key={i} style={{ borderBottom: "1px solid #1E2430" }}>
+                      <td style={S.td}>
+                        <div style={{ fontWeight: 600 }}>{it.name}</div>
+                        {(it.model || it.color) && (
+                          <div style={{ color: "#5A616F", fontSize: 10.5 }}>
+                            {[it.model, it.color].filter(Boolean).join(" · ")}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ ...S.td, fontFamily: "'JetBrains Mono',monospace" }}>{it.chassisNo || "—"}</td>
+                      <td style={{ ...S.td, fontFamily: "'JetBrains Mono',monospace" }}>{it.motorNo || "—"}</td>
+                      <td style={S.td}>{it.batteryType || "—"}</td>
+                      <td style={S.td}>{it.warranty || "—"}</td>
+                      <td style={{ ...S.td, textAlign: "right" }}>{it.qty}</td>
+                      <td style={{ ...S.td, textAlign: "right" }}>{inr(it.actualPrice)}</td>
+                      <td style={{ ...S.td, textAlign: "right" }}>{inr(it.sellingPrice)}</td>
+                      <td style={{ ...S.td, textAlign: "right" }}>{it.batteryPrice ? inr(it.batteryPrice) : "—"}</td>
+                      <td style={{ ...S.td, textAlign: "right", fontFamily: "'JetBrains Mono',monospace" }}>{inr(itemAmount(it))}</td>
+                      <td style={{ ...S.td, textAlign: "right", fontFamily: "'JetBrains Mono',monospace", color: "#C4F135" }}>{inr(itemMargin(it))}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -1334,23 +1384,18 @@ function Sales() {
 
 /* =========================================================================
    12. EXPENSES
-   Flow:
-     Expense Name (e.g. "Rent")  +  Amount  +  Note (e.g. "Sameer ko diye the")
-        -> Category = first word of Note (e.g. "Sameer")
-        -> grouped list, header = category, each row = Note | Name | Amount
 ========================================================================= */
 function emptyExpense() {
   return {
     date: todayISO(),
-    name: "",     // Expense Name — e.g. "Rent", "Bill", "Parts", "Salary"
+    name: "",     
     amount: "",
-    note: "",     // e.g. "Sameer ko diye the" — first word becomes the category
+    note: "",     
     location: ""
   };
 }
 
-// First word of the note becomes the expense category.
-// Example: "Sameer ko diye the" -> "Sameer"
+
 function getCategoryFromNote(note = "") {
   const firstWord = String(note).trim().split(/\s+/)[0] || "";
   return firstWord.replace(/[.,!?;:()[\]{}"'`]+$/g, "").trim();
@@ -1400,7 +1445,7 @@ function Expenses() {
     0
   );
 
-  // Group all expenses by category (derived from the note's first word).
+
   const groupedExpenses = useMemo(() => {
     const groups = {};
 
@@ -1431,7 +1476,7 @@ function Expenses() {
     });
   };
 
-  // Live preview of what category this expense will land under.
+  // Live preview 
   const previewCategory = draft
     ? getCategoryFromNote(draft.note) || "Uncategorized"
     : "";
@@ -1522,7 +1567,7 @@ function Expenses() {
         accent="#FF6B6B"
       />
 
-      {/* CATEGORY GROUPS — header = category (e.g. "SAMEER"), each row =
+      {/* CATEGORY GROUPS — header = category
           Note | Expense Name | Amount, matching the target layout. */}
       <div
         style={{
@@ -1766,7 +1811,7 @@ function Expenses() {
               label="Note"
               value={draft.note}
               onChange={(v) => updateDraft("note", v)}
-              placeholder="e.g. Sameer ko diye the"
+              placeholder="e.g. first word becomes the category"
               textarea
             />
 
@@ -2105,10 +2150,7 @@ function ScooterModal({
     }));
   };
 
-  const canSave =
-    f.name &&
-    f.actualPrice &&
-    f.sellingPrice;
+  const canSave = Boolean(f.name);
 
   return (
     <Modal
@@ -2234,87 +2276,21 @@ function ScooterModal({
           textarea
         />
 
+        {/* Reference price only — battery info/price and actual cost/selling
+            price are collected later, per-unit, when this scooter is added
+            to a bill (see Billing.jsx). Pricing and battery choice can vary
+            sale to sale, so they don't belong on the static catalogue entry. */}
         <Field
-          label="Battery info"
-          value={f.batteryInfo}
+          label="Scooter price (reference)"
+          value={f.scooterPrice}
           onChange={(v) =>
-            set("batteryInfo", v)
+            set(
+              "scooterPrice",
+              v.replace(/[^0-9.]/g, "")
+            )
           }
-          placeholder="60V 30Ah"
-          textarea
+          placeholder="0"
         />
-
-        {/* SCOOTER + BATTERY PRICE */}
-        <div
-          style={{
-            display: "grid",
-
-            gridTemplateColumns:
-              "repeat(2, minmax(0, 1fr))",
-
-            gap: 10,
-          }}
-        >
-          <Field
-            label="Scooter price"
-            value={f.scooterPrice}
-            onChange={(v) =>
-              set(
-                "scooterPrice",
-                v.replace(/[^0-9.]/g, "")
-              )
-            }
-            placeholder="0"
-          />
-
-          <Field
-            label="Battery price"
-            value={f.batteryPrice}
-            onChange={(v) =>
-              set(
-                "batteryPrice",
-                v.replace(/[^0-9.]/g, "")
-              )
-            }
-            placeholder="0"
-          />
-        </div>
-
-        {/* ACTUAL + SELLING PRICE */}
-        <div
-          style={{
-            display: "grid",
-
-            gridTemplateColumns:
-              "repeat(2, minmax(0, 1fr))",
-
-            gap: 10,
-          }}
-        >
-          <Field
-            label="Actual (cost) price *"
-            value={f.actualPrice}
-            onChange={(v) =>
-              set(
-                "actualPrice",
-                v.replace(/[^0-9.]/g, "")
-              )
-            }
-            placeholder="0"
-          />
-
-          <Field
-            label="Selling price *"
-            value={f.sellingPrice}
-            onChange={(v) =>
-              set(
-                "sellingPrice",
-                v.replace(/[^0-9.]/g, "")
-              )
-            }
-            placeholder="0"
-          />
-        </div>
 
       </div>
 

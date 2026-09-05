@@ -628,7 +628,7 @@ function TopBar({ business, tab, owner, onLogout, isMobile }) {
    8. DASHBOARD 
 ========================================================================= */
 function Dashboard({ setTab }) {
-  const [range, setRange] = useState("year");
+  const [range, setRange] = useState("month");
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
@@ -1295,8 +1295,8 @@ function Sales() {
     return () => { socket.off("bill:created", refresh); socket.off("bill:updated", refresh); socket.off("bill:deleted", refresh); };
   }, [load]);
 
-  const itemMargin = (it) => (Number(it.sellingPrice || 0) + Number(it.batteryPrice || 0) - Number(it.actualPrice || 0)) * Number(it.qty || 1);
-  const itemAmount = (it) => (Number(it.sellingPrice || 0) + Number(it.batteryPrice || 0)) * Number(it.qty || 1);
+  const itemMargin = (it) => (Number(it.sellingPrice || 0) - Number(it.actualPrice || 0)) * Number(it.qty || 1);
+  const itemAmount = (it) => Number(it.sellingPrice || 0) * Number(it.qty || 1);
 
   const total = bills.reduce((s, b) => s + Number(b.total || 0), 0);
   const profit = bills.reduce((s, b) => s + (b.items || []).reduce((x, it) => x + itemMargin(it), 0), 0);
@@ -1384,18 +1384,23 @@ function Sales() {
 
 /* =========================================================================
    12. EXPENSES
+   Flow:
+     Expense Name (e.g. "Rent")  +  Amount  +  Note (e.g. "Sameer ko diye the")
+        -> Category = first word of Note (e.g. "Sameer")
+        -> grouped list, header = category, each row = Note | Name | Amount
 ========================================================================= */
 function emptyExpense() {
   return {
     date: todayISO(),
-    name: "",     
+    name: "",     // Expense Name — e.g. "Rent", "Bill", "Parts", "Salary"
     amount: "",
-    note: "",     
+    note: "",     // e.g. "Sameer ko diye the" — first word becomes the category
     location: ""
   };
 }
 
-
+// First word of the note becomes the expense category.
+// Example: "Sameer ko diye the" -> "Sameer"
 function getCategoryFromNote(note = "") {
   const firstWord = String(note).trim().split(/\s+/)[0] || "";
   return firstWord.replace(/[.,!?;:()[\]{}"'`]+$/g, "").trim();
@@ -1445,7 +1450,7 @@ function Expenses() {
     0
   );
 
-
+  // Group all expenses by category (derived from the note's first word).
   const groupedExpenses = useMemo(() => {
     const groups = {};
 
@@ -1476,7 +1481,7 @@ function Expenses() {
     });
   };
 
-  // Live preview 
+  // Live preview of what category this expense will land under.
   const previewCategory = draft
     ? getCategoryFromNote(draft.note) || "Uncategorized"
     : "";
@@ -1567,7 +1572,7 @@ function Expenses() {
         accent="#FF6B6B"
       />
 
-      {/* CATEGORY GROUPS — header = category
+      {/* CATEGORY GROUPS — header = category (e.g. "SAMEER"), each row =
           Note | Expense Name | Amount, matching the target layout. */}
       <div
         style={{
@@ -1811,7 +1816,7 @@ function Expenses() {
               label="Note"
               value={draft.note}
               onChange={(v) => updateDraft("note", v)}
-              placeholder="e.g. first word becomes the category"
+              placeholder="e.g. Sameer ko diye the"
               textarea
             />
 

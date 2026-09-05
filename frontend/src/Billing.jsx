@@ -37,7 +37,7 @@ const VEHICLE_SPEC_FIELDS = [
 function emptyItem() {
   return {
     scooter: null, name: "", description: "", chassisNo: "", motorNo: "",
-    model: "", color: "", batteryType: "", batteryPrice: 0, motorPower: "", range: "",
+    model: "", color: "", scooterPrice: 0, batteryType: "", batteryPrice: 0, motorPower: "", range: "",
     topSpeed: "", chargingTime: "", controller: "", wheelSize: "",
     actualPrice: 0, sellingPrice: 0, qty: 1,
   };
@@ -61,7 +61,7 @@ function emptyDraft(business) {
 
 // GST-inclusive: sellingPrice already includes GST.
 function computeTotals(items, gstRate) {
-  const grandTotal = items.reduce((s, it) => s + (Number(it.sellingPrice || 0) + Number(it.batteryPrice || 0)) * Number(it.qty || 1), 0);
+  const grandTotal = items.reduce((s, it) => s + Number(it.sellingPrice || 0) * Number(it.qty || 1), 0);
   const rate = Number(gstRate) || 0;
   const gstAmount = rate > 0 ? +((grandTotal * rate) / (100 + rate)).toFixed(2) : 0;
   const subtotal = +(grandTotal - gstAmount).toFixed(2);
@@ -211,14 +211,14 @@ function InvoiceCard({ bill, business, innerRef, forPrint }) {
         </thead>
         <tbody>
           {(bill.items || []).map((it, i) => {
-            const unitPrice = Number(it.sellingPrice || 0) + Number(it.batteryPrice || 0);
+            const unitPrice = Number(it.sellingPrice || 0);
             return (
               <tr key={i}>
                 <td style={{ border: "1px solid #ddd", padding: forPrint ? 5 : 8, fontWeight: 600 }}>{it.name}</td>
                 <td style={{ border: "1px solid #ddd", padding: forPrint ? 5 : 8, fontSize: forPrint ? 9.5 : 11.5 }}>
                   {it.chassisNo ? <>Chassis: {it.chassisNo}<br /></> : null}
                   {it.motorNo ? <>Motor: {it.motorNo}<br /></> : null}
-                  {it.batteryType ? <>Battery: {it.batteryType}{it.batteryPrice ? ` (+${inr(it.batteryPrice)})` : ""}<br /></> : null}
+                  {it.batteryType ? <>Battery: {it.batteryType}{it.batteryPrice ? ` (ref. ${inr(it.batteryPrice)})` : ""}<br /></> : null}
                   {bill.type !== "sale" && bill.serviceDesc ? bill.serviceDesc : null}
                   <span style={{ color: "#0F4B3A" }}>GST included</span>
                 </td>
@@ -351,12 +351,13 @@ export default function Billing({ business }) {
         ...emptyItem(),
         scooter: sc._id, name: sc.name, chassisNo: sc.chassisNo, motorNo: sc.motorNo,
         warranty: sc.warranty || "",
-        // Battery info/price, actual cost, and selling price are entered
-        // fresh for this sale — they're no longer stored on the catalogue
-        // entry since they can vary unit to unit. scooterPrice (if set) is
-        // just a starting suggestion the staff can adjust.
+        // scooterPrice is shown as a plain reference figure only — it is
+        // NEVER copied into sellingPrice, so it can't get double-counted
+        // with the battery price. Battery info/price, actual cost, and
+        // selling price are all entered fresh for this specific sale.
+        scooterPrice: Number(sc.scooterPrice) || 0,
         batteryType: "", batteryPrice: 0,
-        actualPrice: 0, sellingPrice: Number(sc.scooterPrice) || 0, qty: 1,
+        actualPrice: 0, sellingPrice: 0, qty: 1,
       }],
     }));
   };
@@ -463,7 +464,7 @@ export default function Billing({ business }) {
     if (bill.customerAddress) text += `Address: ${bill.customerAddress}\n`;
     text += `\n*Items*\n`;
     (bill.items || []).forEach((it, i) => {
-      const unitPrice = Number(it.sellingPrice || 0) + Number(it.batteryPrice || 0);
+      const unitPrice = Number(it.sellingPrice || 0);
       text += `\n${i + 1}. *${it.name}*\nQty: ${it.qty}\nPrice: ${inr(unitPrice)} (GST incl.)\nAmount: ${inr(unitPrice * it.qty)}\n`;
       if (it.model) text += `Model: ${it.model}\n`;
       if (it.color) text += `Color: ${it.color}\n`;
@@ -659,8 +660,49 @@ export default function Billing({ business }) {
                 <input value={it.motorNo} onChange={(e) => updateItem(idx, "motorNo", e.target.value)} placeholder="Motor no." style={{ ...S.input, flex: 1, minWidth: 120 }} />
               </div>
 
-              {/* Pricing — always visible and clearly labeled for every item type */}
-              <div style={{ marginBottom: 10 }}>
+              {draft.type === "sale" && (
+                <>
+                  {/* 1. Scooter price — reference only, straight from the
+                      catalogue. Not editable and never copied into Selling
+                      price, so it can never get double-counted. */}
+                  {Number(it.scooterPrice) > 0 && (
+                    <div style={{ marginBottom: 10 }}>
+                      <label style={{ fontSize: 11, color: "#8B93A1", display: "block", marginBottom: 4 }}>Scooter price (catalogue reference)</label>
+                      <div style={{ ...S.input, background: "#171B23", color: "#8B93A1", display: "flex", alignItems: "center" }}>{inr(it.scooterPrice)}</div>
+                    </div>
+                  )}
+
+                  {/* 2. Battery — info first, then its price */}
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 10.5, color: "#5A616F", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 5 }}>Battery (this sale)</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <div>
+                        <label style={{ fontSize: 11, color: "#8B93A1", display: "block", marginBottom: 4 }}>Battery info</label>
+                        <input value={it.batteryType} onChange={(e) => updateItem(idx, "batteryType", e.target.value)} placeholder="e.g. 60V 30Ah Lithium" style={S.input} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 11, color: "#8B93A1", display: "block", marginBottom: 4 }}>Battery price (GST incl.)</label>
+                        <input type="number" value={it.batteryPrice} onChange={(e) => updateItem(idx, "batteryPrice", Number(e.target.value) || 0)} placeholder="0" style={S.input} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(110px,1fr))", gap: 6, marginBottom: 10 }}>
+                    {VEHICLE_SPEC_FIELDS.filter(([field]) => field !== "batteryType").map(([field, label]) => (
+                      <input key={field} value={it[field]} onChange={(e) => updateItem(idx, field, e.target.value)} placeholder={label} style={{ ...S.input, fontSize: 12, padding: "7px 9px" }} />
+                    ))}
+                  </div>
+                </>
+              )}
+              {draft.type !== "sale" && (
+                <textarea value={draft.serviceDesc} onChange={(e) => setDraft((d) => ({ ...d, serviceDesc: e.target.value }))} placeholder="Describe the work done" rows={2} style={{ ...S.input, marginTop: 4, marginBottom: 10 }} />
+              )}
+
+              {/* 3. Actual cost, then 4. Selling price — selling price is
+                  what actually drives the bill amount. Battery price above
+                  is informational only, to help arrive at these two numbers;
+                  it isn't automatically added into the total. */}
+              <div style={{ marginBottom: 4 }}>
                 <div style={{ fontSize: 10.5, color: "#5A616F", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 5 }}>Pricing (per unit)</div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <div style={{ flex: 1, minWidth: 130 }}>
@@ -672,37 +714,9 @@ export default function Billing({ business }) {
                     <input type="number" value={it.sellingPrice} onChange={(e) => updateItem(idx, "sellingPrice", Number(e.target.value) || 0)} placeholder="0" style={S.input} />
                   </div>
                 </div>
+                <div style={{ fontSize: 10.5, color: "#5A616F", marginTop: 4 }}>The bill amount for this item is Selling price × Qty.</div>
               </div>
 
-              {draft.type === "sale" && (
-                <>
-                  {/* Battery — entered here per sale, not stored on the
-                      catalogue entry, since battery choice and price can
-                      differ from one sale to the next. */}
-                  <div style={{ marginBottom: 10 }}>
-                    <div style={{ fontSize: 10.5, color: "#5A616F", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 5 }}>Battery (this sale)</div>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <div style={{ flex: 2, minWidth: 160 }}>
-                        <label style={{ fontSize: 11, color: "#8B93A1", display: "block", marginBottom: 4 }}>Battery info</label>
-                        <input value={it.batteryType} onChange={(e) => updateItem(idx, "batteryType", e.target.value)} placeholder="e.g. 60V 30Ah Lithium" style={S.input} />
-                      </div>
-                      <div style={{ flex: 1, minWidth: 130 }}>
-                        <label style={{ fontSize: 11, color: "#8B93A1", display: "block", marginBottom: 4 }}>Battery price (GST incl.)</label>
-                        <input type="number" value={it.batteryPrice} onChange={(e) => updateItem(idx, "batteryPrice", Number(e.target.value) || 0)} placeholder="0" style={S.input} />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(110px,1fr))", gap: 6 }}>
-                    {VEHICLE_SPEC_FIELDS.filter(([field]) => field !== "batteryType").map(([field, label]) => (
-                      <input key={field} value={it[field]} onChange={(e) => updateItem(idx, field, e.target.value)} placeholder={label} style={{ ...S.input, fontSize: 12, padding: "7px 9px" }} />
-                    ))}
-                  </div>
-                </>
-              )}
-              {draft.type !== "sale" && (
-                <textarea value={draft.serviceDesc} onChange={(e) => setDraft((d) => ({ ...d, serviceDesc: e.target.value }))} placeholder="Describe the work done" rows={2} style={{ ...S.input, marginTop: 4 }} />
-              )}
               {it.scooter && (
                 <div style={{ marginTop: 8, fontSize: 11, color: "#8FAE2A" }}>
                   This item will be removed from the catalogue once the bill is created.
