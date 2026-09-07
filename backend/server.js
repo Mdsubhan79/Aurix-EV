@@ -103,10 +103,13 @@ const billItemSchema = new mongoose.Schema(
     description: { type: String, default: "" },
     chassisNo: { type: String, default: "" },
     motorNo: { type: String, default: "" },
+    warranty: { type: String, default: "" }, // was missing — battery price/warranty were being silently stripped on save
     // vehicle spec fields shown on the printed invoice — all optional
     model: { type: String, default: "" },
     color: { type: String, default: "" },
+    scooterPrice: { type: Number, default: 0 }, // catalogue reference price only, not part of billing math
     batteryType: { type: String, default: "" },
+    batteryPrice: { type: Number, default: 0 }, // informational only, not folded into sellingPrice/total
     motorPower: { type: String, default: "" },
     range: { type: String, default: "" },
     topSpeed: { type: String, default: "" },

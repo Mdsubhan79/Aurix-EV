@@ -625,8 +625,7 @@ app.get(
         const billProfit = (bill.items || []).reduce(
           (sum, item) => {
             const profit =
-              (Number(item.sellingPrice || 0) +
-                Number(item.batteryPrice || 0) -
+              (Number(item.sellingPrice || 0) -
                 Number(item.actualPrice || 0)) *
               Number(item.qty || 1);
 
@@ -802,8 +801,7 @@ app.post(
         (bill.items || []).reduce(
           (itemSum, item) =>
             itemSum +
-            (Number(item.sellingPrice || 0) +
-              Number(item.batteryPrice || 0) -
+            (Number(item.sellingPrice || 0) -
               Number(item.actualPrice || 0)) *
               Number(item.qty || 1),
           0
