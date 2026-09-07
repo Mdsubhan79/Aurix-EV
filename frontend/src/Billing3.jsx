@@ -264,7 +264,7 @@ function InvoiceCard({ bill, business, innerRef, forPrint }) {
       <div style={{ border: "1px solid #f0d98c", background: "#fffbea", borderRadius: 8, padding: forPrint ? 8 : 12, marginTop: forPrint ? 10 : 18, fontSize: forPrint ? 10 : 12 }}>
         <b>Warranty Information</b>
         <div style={{ marginTop: 4, whiteSpace: "pre-line" }}>
-          Motor, Controller & Charger Warranty: 12 Months{"\n"}Battery Warranty: 12 Months
+          Motor, Controller & Charger Warranty: 12 Months{"\n"}Battery Warranty: 18 Months
         </div>
       </div>
 
@@ -365,15 +365,9 @@ export default function Billing({ business }) {
       items: [...d.items, {
         ...emptyItem(),
         scooter: sc._id, name: sc.name, chassisNo: sc.chassisNo, motorNo: sc.motorNo,
-        // Warranty is asked fresh for this sale, not auto-filled from the
-        // catalogue — it can differ per unit/sale, same reasoning as battery
-        // and pricing below.
-        warranty: "",
-        // scooterPrice is shown as a plain reference figure only — it is
-        // NEVER copied into sellingPrice, so it can't get double-counted
-        // with the battery price. Battery info/price, actual cost, and
-        // selling price are all entered fresh for this specific sale.
-        scooterPrice: Number(sc.scooterPrice) || 0,
+        warranty: sc.warranty || "",
+        model: sc.model || "", color: sc.color || "", scooterPrice: sc.scooterPrice ,
+       
         batteryType: "", batteryPrice: 0,
         actualPrice: 0, sellingPrice: 0, qty: 1,
       }],
