@@ -365,9 +365,15 @@ export default function Billing({ business }) {
       items: [...d.items, {
         ...emptyItem(),
         scooter: sc._id, name: sc.name, chassisNo: sc.chassisNo, motorNo: sc.motorNo,
-        warranty: sc.warranty || "",
-        model: sc.model || "", color: sc.color || "", scooterPrice: sc.scooterPrice ,
-       
+        // Warranty is asked fresh for this sale, not auto-filled from the
+        // catalogue — it can differ per unit/sale, same reasoning as battery
+        // and pricing below.
+        warranty: "",
+        // scooterPrice is shown as a plain reference figure only — it is
+        // NEVER copied into sellingPrice, so it can't get double-counted
+        // with the battery price. Battery info/price, actual cost, and
+        // selling price are all entered fresh for this specific sale.
+        scooterPrice: Number(sc.scooterPrice) || 0,
         batteryType: "", batteryPrice: 0,
         actualPrice: 0, sellingPrice: 0, qty: 1,
       }],

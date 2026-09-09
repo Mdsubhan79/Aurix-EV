@@ -18,7 +18,7 @@ import {
   X,
   Check
 } from "lucide-react";
-import { api, socket, S, Field, Modal, Empty, inr, fmtDate, todayISO } from "./App3";
+import { api, socket, S, Field, Modal, Empty, inr, fmtDate, todayISO } from "./App";
 
 
 
@@ -120,7 +120,12 @@ function usePrintStyles() {
         #bill-print-root { display: none !important; }
       }
       @media print {
-        html, body { margin: 0 !important; padding: 0 !important; height: auto !important; background: #fff !important; }
+        html, body { margin: 0 !important; padding: 0 !important; height: auto !important; min-height: 0 !important; background: #fff !important; }
+        /* The app's global stylesheet sets html/body/#root to min-height:100vh
+           for the normal screen UI, but that rule isn't scoped to @media
+           screen, so it was leaking into print too — forcing the printed
+           page to reserve a full extra viewport of blank space below the
+           invoice. The override above cancels it out for print specifically. */
         /* Hide every top-level element except the print node itself — this
            doesn't depend on guessing the app's root element id (the old
            "#root" guess was wrong for this app, which is why print came out
@@ -134,6 +139,7 @@ function usePrintStyles() {
           padding: 0 !important;
           width: auto !important;
           height: auto !important;
+          min-height: 0 !important;
           overflow: visible !important;
         }
         #bill-print-root * { visibility: visible !important; }
@@ -264,7 +270,7 @@ function InvoiceCard({ bill, business, innerRef, forPrint }) {
       <div style={{ border: "1px solid #f0d98c", background: "#fffbea", borderRadius: 8, padding: forPrint ? 8 : 12, marginTop: forPrint ? 10 : 18, fontSize: forPrint ? 10 : 12 }}>
         <b>Warranty Information</b>
         <div style={{ marginTop: 4, whiteSpace: "pre-line" }}>
-          Motor, Controller & Charger Warranty: 12 Months{"\n"}Battery Warranty: 18 Months
+          Motor, Controller & Charger Warranty: 12 Months{"\n"}Battery Warranty: 12 Months
         </div>
       </div>
 
@@ -673,17 +679,17 @@ export default function Billing({ business }) {
                   <input type="number" min="1" value={it.qty} onChange={(e) => updateItem(idx, "qty", Number(e.target.value) || 1)} placeholder="Qty" style={S.input} />
                 </div>
               </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-                <input value={it.chassisNo} onChange={(e) => updateItem(idx, "chassisNo", e.target.value)} placeholder="Chassis no." style={{ ...S.input, flex: 1, minWidth: 120 }} />
-                <input value={it.motorNo} onChange={(e) => updateItem(idx, "motorNo", e.target.value)} placeholder="Motor no." style={{ ...S.input, flex: 1, minWidth: 120 }} />
-              </div>
-              <div style={{ marginBottom: 10 }}>
-                <label style={{ fontSize: 11, color: "#8B93A1", display: "block", marginBottom: 4 }}>Warranty</label>
-                <input value={it.warranty} onChange={(e) => updateItem(idx, "warranty", e.target.value)} placeholder="e.g. 12 months" style={S.input} />
-              </div>
-
               {draft.type === "sale" && (
                 <>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                    <input value={it.chassisNo} onChange={(e) => updateItem(idx, "chassisNo", e.target.value)} placeholder="Chassis no." style={{ ...S.input, flex: 1, minWidth: 120 }} />
+                    <input value={it.motorNo} onChange={(e) => updateItem(idx, "motorNo", e.target.value)} placeholder="Motor no." style={{ ...S.input, flex: 1, minWidth: 120 }} />
+                  </div>
+                  <div style={{ marginBottom: 10 }}>
+                    <label style={{ fontSize: 11, color: "#8B93A1", display: "block", marginBottom: 4 }}>Warranty</label>
+                    <input value={it.warranty} onChange={(e) => updateItem(idx, "warranty", e.target.value)} placeholder="e.g. 12 months" style={S.input} />
+                  </div>
+
                   {/* 1. Scooter price — reference only, straight from the
                       catalogue. Not editable and never copied into Selling
                       price, so it can never get double-counted. */}
