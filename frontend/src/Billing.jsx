@@ -143,6 +143,8 @@ function usePrintStyles() {
           overflow: visible !important;
         }
         #bill-print-root * { visibility: visible !important; }
+        #bill-print-root table, #bill-print-root tr { page-break-inside: avoid; }
+        #bill-print-root > div > div { page-break-inside: avoid; }
       }
     `;
     document.head.appendChild(style);
@@ -220,6 +222,13 @@ function InvoiceCard({ bill, business, innerRef, forPrint }) {
         </div>
       )}
 
+      {bill.type !== "sale" && bill.serviceDesc && (
+        <div style={{ border: "1px solid #eee", borderRadius: 8, padding: forPrint ? 8 : 12, marginBottom: forPrint ? 10 : 18, fontSize: forPrint ? 10 : 12 }}>
+          <b>{bill.type === "repair" ? "Repair details" : "Service details"}</b>
+          <div style={{ marginTop: 4, whiteSpace: "pre-line" }}>{bill.serviceDesc}</div>
+        </div>
+      )}
+
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: forPrint ? 10.5 : 12.5, marginBottom: forPrint ? 10 : 18 }}>
         <thead>
           <tr style={{ background: "#0F4B3A", color: "#fff" }}>
@@ -240,7 +249,6 @@ function InvoiceCard({ bill, business, innerRef, forPrint }) {
                   {it.chassisNo ? <>Chassis: {it.chassisNo}<br /></> : null}
                   {it.motorNo ? <>Motor: {it.motorNo}<br /></> : null}
                   {it.batteryType ? <>Battery: {it.batteryType}{it.batteryPrice ? ` (ref. ${inr(it.batteryPrice)})` : ""}<br /></> : null}
-                  {bill.type !== "sale" && bill.serviceDesc ? bill.serviceDesc : null}
                   <span style={{ color: "#0F4B3A" }}>GST included</span>
                 </td>
                 <td style={{ border: "1px solid #ddd", padding: forPrint ? 5 : 8, textAlign: "right" }}>{it.qty}</td>
@@ -654,26 +662,40 @@ export default function Billing({ business }) {
             <div style={S.cardTitle}>📦 {draft.type === "sale" ? "Products" : draft.type === "repair" ? "Repair items" : "Service items"}</div>
           </div>
           <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <select onChange={(e) => { if (e.target.value) { addItem(e.target.value); e.target.value = ""; } }} style={{ ...S.input, flex: 1, minWidth: 200 }} defaultValue="">
-              <option value="" disabled>
-                {scooters.length === 0 ? "No scooters in stock" : "Add scooter from catalogue…"}
-              </option>
-              {scooters.map((s) => <option key={s._id} value={s._id}>{s.name} — {inr(s.sellingPrice)}</option>)}
-            </select>
+            {draft.type === "sale" && (
+              <select onChange={(e) => { if (e.target.value) { addItem(e.target.value); e.target.value = ""; } }} style={{ ...S.input, flex: 1, minWidth: 200 }} defaultValue="">
+                <option value="" disabled>
+                  {scooters.length === 0 ? "No scooters in stock" : "Add scooter from catalogue…"}
+                </option>
+                {scooters.map((s) => <option key={s._id} value={s._id}>{s.name} — {inr(s.sellingPrice)}</option>)}
+              </select>
+            )}
             {draft.type !== "sale" && (
-              <button type="button" onClick={addServiceCharge} style={S.ghostBtn}><Plus size={14} /> Add charge line</button>
+              <button type="button" onClick={addServiceCharge} style={S.ghostBtn}><Plus size={14} /> Add {draft.type} item</button>
             )}
           </div>
+
+          {/* One description field for the whole bill — previously this was
+              placed inside the items loop, so it duplicated itself once per
+              item while every copy edited the same underlying value. */}
+          {draft.type !== "sale" && (
+            <div style={{ marginTop: 10 }}>
+              <label style={{ fontSize: 11, color: "#8B93A1", display: "block", marginBottom: 4 }}>Describe the work done (optional)</label>
+              <textarea value={draft.serviceDesc} onChange={(e) => setDraft((d) => ({ ...d, serviceDesc: e.target.value }))} placeholder={draft.type === "repair" ? "e.g. Replaced front brake pads" : "e.g. Routine service and inspection"} rows={2} style={S.input} />
+            </div>
+          )}
 
           {draft.items.map((it, idx) => (
             <div key={idx} style={{ background: "#12151A", border: "1px solid #232833", borderRadius: 10, padding: 12, marginTop: 10 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                <b style={{ fontSize: 13 }}>Item {idx + 1}{it.scooter ? " · from catalogue" : ""}</b>
+                <b style={{ fontSize: 13 }}>
+                  {draft.type === "sale" ? `Item ${idx + 1}${it.scooter ? " · from catalogue" : ""}` : `${draft.type === "repair" ? "Repair" : "Service"} item ${idx + 1}`}
+                </b>
                 <button type="button" onClick={() => removeItem(idx)} style={{ background: "none", border: "none", color: "#FF6B6B", cursor: "pointer" }}><Trash2 size={14} /></button>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
                 <div style={{ flex: 2, minWidth: 140 }}>
-                  <input value={it.name} onChange={(e) => updateItem(idx, "name", e.target.value)} placeholder="Item name *" style={S.input} />
+                  <input value={it.name} onChange={(e) => updateItem(idx, "name", e.target.value)} placeholder={draft.type === "sale" ? "Item name *" : `${draft.type === "repair" ? "Repair" : "Service"} name *`} style={S.input} />
                 </div>
                 <div style={{ width: 70 }}>
                   <input type="number" min="1" value={it.qty} onChange={(e) => updateItem(idx, "qty", Number(e.target.value) || 1)} placeholder="Qty" style={S.input} />
@@ -722,9 +744,11 @@ export default function Billing({ business }) {
                   </div>
                 </>
               )}
-              {draft.type !== "sale" && (
-                <textarea value={draft.serviceDesc} onChange={(e) => setDraft((d) => ({ ...d, serviceDesc: e.target.value }))} placeholder="Describe the work done" rows={2} style={{ ...S.input, marginTop: 4, marginBottom: 10 }} />
-              )}
+
+              {/* Service/repair items intentionally stop here — just name,
+                  qty, actual cost, and selling price. No chassis/motor/
+                  warranty/battery/vehicle-spec fields, since those describe
+                  a physical scooter unit, not a charge line. */}
 
               {/* 3. Actual cost, then 4. Selling price — selling price is
                   what actually drives the bill amount. Battery price above
