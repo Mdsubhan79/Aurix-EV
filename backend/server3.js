@@ -457,24 +457,13 @@ function computeBillTotals(body) {
   return { subtotal, gstAmount, total };
 }
 
-const INVOICE_PREFIX = { sale: "INV", service: "SRV", repair: "RPR" };
-
-async function nextInvoiceNumber(ownerId, dateStr, type) {
+async function nextInvoiceNumber(ownerId, dateStr) {
   const year = new Date(dateStr || Date.now()).getFullYear();
-  const prefix = INVOICE_PREFIX[type] || "INV";
-  try {
-    const countThisYear = await Bill.countDocuments({
-      owner: ownerId,
-      invoiceNumber: { $regex: `^${prefix}/${year}/` },
-    });
-    return `${prefix}/${year}/${String(countThisYear + 1).padStart(4, "0")}`;
-  } catch (err) {
-    // Guaranteed fallback — a bill should never be created without an
-    // invoice number, even if the count query above ever fails for some
-    // reason (e.g. a transient DB error).
-    console.error("nextInvoiceNumber fallback used:", err.message);
-    return `${prefix}/${year}/${Date.now()}`;
-  }
+  const countThisYear = await Bill.countDocuments({
+    owner: ownerId,
+    invoiceNumber: { $regex: `^INV/${year}/` },
+  });
+  return `INV/${year}/${String(countThisYear + 1).padStart(4, "0")}`;
 }
 
 app.post(
@@ -483,7 +472,7 @@ app.post(
   wrap(async (req, res) => {
     const body = req.body;
     const { subtotal, gstAmount, total } = computeBillTotals(body);
-    const invoiceNumber = await nextInvoiceNumber(req.ownerId, body.date, body.type);
+    const invoiceNumber = await nextInvoiceNumber(req.ownerId, body.date);
     const bill = await Bill.create({ ...body, owner: req.ownerId, subtotal, gstAmount, total, invoiceNumber });
     emitUpdate("bill:created", bill);
     res.status(201).json(bill);
