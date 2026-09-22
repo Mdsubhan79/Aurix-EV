@@ -27,18 +27,14 @@ const VEHICLE_SPEC_FIELDS = [
   ["color", "Color"],
   ["batteryType", "Battery"],
   ["motorPower", "Motor Power"],
-  ["range", "Range"],
-  ["topSpeed", "Top Speed"],
-  ["chargingTime", "Charging Time"],
-  ["controller", "Controller"],
   ["wheelSize", "Wheel Size"],
 ];
 
 function emptyItem() {
   return {
     scooter: null, name: "", description: "", chassisNo: "", motorNo: "", warranty: "",
-    model: "", color: "", scooterPrice: 0, batteryType: "", batteryPrice: 0, motorPower: "", range: "",
-    topSpeed: "", chargingTime: "", controller: "", wheelSize: "",
+    model: "", color: "", scooterPrice: 0, batteryType: "", batteryPrice: 0, motorPower: "", 
+     wheelSize: "",
     actualPrice: 0, sellingPrice: 0, qty: 1,
   };
 }
@@ -107,7 +103,7 @@ function usePrintRoot() {
 function usePrintStyles() {
   useEffect(() => {
     const existing = document.getElementById("bill-print-css");
-    if (existing) existing.remove(); // replace any stale copy from an older build
+    if (existing) existing.remove(); 
     const style = document.createElement("style");
     style.id = "bill-print-css";
     style.innerHTML = `
@@ -209,7 +205,7 @@ function InvoiceCard({ bill, business, innerRef, forPrint }) {
           </div>
         </div>
 
-        {bill.type === "sale" && (bill.items || []).some((it) => it.model || it.color || it.batteryType || it.motorPower || it.range || it.wheelSize) && (
+        {bill.type === "sale" && (bill.items || []).some((it) => it.model || it.color || it.batteryType || it.motorPower || it.wheelSize) && (
           <div style={{ border: "1px solid #eee", borderRadius: 8, padding: 14, marginBottom: 20 }}>
             <b style={{ fontSize: 13 }}>🔧 Vehicle Specifications</b>
             {(bill.items || []).map((it, i) => (
@@ -285,9 +281,7 @@ function InvoiceCard({ bill, business, innerRef, forPrint }) {
         </div>
       </div>
 
-      {/* Anchored to the bottom of the page in print (marginTop:"auto" inside
-          the flex column above) instead of trailing right after the content
-          with a huge gap beneath it. */}
+  
       <div style={{ marginTop: "auto", paddingTop: 24, textAlign: "center", fontSize: 12.5, color: "#555" }}>
         <div>If you have any questions about this invoice, please contact us at {business?.phone || "N/A"}</div>
         <div style={{ fontWeight: 700, marginTop: 6 }}>Thank you!</div>
@@ -321,10 +315,7 @@ export default function Billing({ business }) {
   const [saving, setSaving] = useState(false);
 
   const loadBills = useCallback(() => api.get("/bills").then((res) => setBills(res.data)), []);
-  // Only scooters still in stock show up as pickable — once one is sold
-  // through a bill it's deleted from the catalogue (see saveBill below), so
-  // it naturally drops out of this list and out of the Catalogue tab, while
-  // still being visible in Sales via the bill record that was already saved.
+
   const loadScooters = useCallback(() => api.get("/scooters").then((res) => setScooters(res.data)), []);
 
   useEffect(() => {
@@ -385,14 +376,9 @@ export default function Billing({ business }) {
       items: [...d.items, {
         ...emptyItem(),
         scooter: sc._id, name: sc.name, chassisNo: sc.chassisNo, motorNo: sc.motorNo,
-        // Warranty is asked fresh for this sale, not auto-filled from the
-        // catalogue — it can differ per unit/sale, same reasoning as battery
-        // and pricing below.
+    
         warranty: "",
-        // scooterPrice is shown as a plain reference figure only — it is
-        // NEVER copied into sellingPrice, so it can't get double-counted
-        // with the battery price. Battery info/price, actual cost, and
-        // selling price are all entered fresh for this specific sale.
+      
         scooterPrice: Number(sc.scooterPrice) || 0,
         batteryType: "", batteryPrice: 0,
         actualPrice: 0, sellingPrice: 0, qty: 1,
@@ -424,11 +410,7 @@ export default function Billing({ business }) {
     paymentMode: draft.paymentMode,
   });
 
-  // After a bill is created (not edited — see note below), any item that was
-  // picked from the catalogue (item.scooter is set) gets removed from the
-  // catalogue since it's now sold. The bill itself already has a full
-  // snapshot of that item's details, so it keeps showing correctly under
-  // Sales even after the catalogue entry is gone.
+
   const removeSoldScootersFromCatalogue = async (items) => {
     const soldScooterIds = (items || [])
       .filter((it) => it.scooter)
@@ -461,9 +443,7 @@ export default function Billing({ business }) {
       if (mode === "edit" && editingId) {
         res = await api.put(`/bills/${editingId}`, payload);
         showToast("Bill updated");
-        // Not removing scooters here — editing an existing bill shouldn't
-        // re-trigger a catalogue removal for items that may have already
-        // been removed (or weren't part of the original sale).
+      
       } else {
         res = await api.post("/bills", payload);
         showToast("Bill created");
@@ -751,15 +731,7 @@ export default function Billing({ business }) {
                 </>
               )}
 
-              {/* Service/repair items intentionally stop here — just name,
-                  qty, actual cost, and selling price. No chassis/motor/
-                  warranty/battery/vehicle-spec fields, since those describe
-                  a physical scooter unit, not a charge line. */}
-
-              {/* 3. Actual cost, then 4. Selling price — selling price is
-                  what actually drives the bill amount. Battery price above
-                  is informational only, to help arrive at these two numbers;
-                  it isn't automatically added into the total. */}
+              
               <div style={{ marginBottom: 4 }}>
                 <div style={{ fontSize: 10.5, color: "#5A616F", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 5 }}>Pricing (per unit)</div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
