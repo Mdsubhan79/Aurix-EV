@@ -162,130 +162,143 @@ function InvoiceCard({ bill, business, innerRef, forPrint }) {
         background: "#fff", color: "#12151A",
         width: forPrint ? "190mm" : "100%",
         maxWidth: forPrint ? "190mm" : 794,
+        // minHeight + flex column lets the footer/signature anchor to the
+        // bottom of the page (see marginTop:"auto" below) instead of the
+        // whole invoice sitting as a small block at the top of an otherwise
+        // empty A4 sheet. 273mm keeps a safety margin under the 277mm
+        // content area (297mm page - 10mm top/bottom margins from @page).
+        minHeight: forPrint ? "273mm" : undefined,
+        display: forPrint ? "flex" : undefined,
+        flexDirection: forPrint ? "column" : undefined,
         boxSizing: "border-box",
         margin: "0 auto",
-        padding: forPrint ? 14 : 32,
+        padding: forPrint ? 28 : 32,
         borderRadius: forPrint ? 0 : 8,
         fontFamily: "'Inter',sans-serif",
         border: forPrint ? "none" : "1px solid #eee",
-        fontSize: forPrint ? 11.5 : 13,
+        fontSize: 13,
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 16, borderBottom: "2px solid #0F4B3A", paddingBottom: forPrint ? 10 : 18, marginBottom: forPrint ? 10 : 18 }}>
-        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-          {business?.logoUrl && <img src={business.logoUrl} crossOrigin="anonymous" style={{ width: forPrint ? 44 : 64, height: forPrint ? 44 : 64, objectFit: "contain", border: "1px solid #eee", borderRadius: 8 }} />}
-          <div>
-            <div style={{ fontSize: forPrint ? 17 : 22, fontWeight: 700, color: "#0F4B3A" }}>{business?.name || "Business"}</div>
-            <div style={{ color: "#666", fontSize: forPrint ? 10.5 : 12.5 }}>{business?.tagline || ""}</div>
-          </div>
-        </div>
-        <div style={{ textAlign: "right", fontSize: forPrint ? 10.5 : 12.5, color: "#333" }}>
-          <div>No: <b>{bill.invoiceNumber || "—"}</b></div>
-          <div>Date: <b>{fmtDate(bill.date)}</b></div>
-        </div>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: forPrint ? 10 : 18, fontSize: forPrint ? 10.5 : 12.5 }}>
-        <div style={{ border: "1px solid #eee", borderRadius: 8, padding: forPrint ? 8 : 12 }}>
-          <b>🏢 Business Details</b>
-          <div style={{ marginTop: 6, lineHeight: 1.7 }}>
-            Address: {business?.address || "N/A"}<br />
-            GSTIN: {business?.gstin || "N/A"}<br />
-            Phone: {business?.phone || "N/A"}<br />
-            Email: {business?.email || "N/A"}
-          </div>
-        </div>
-        <div style={{ border: "1px solid #eee", borderRadius: 8, padding: forPrint ? 8 : 12 }}>
-          <b>👤 Customer Details</b>
-          <div style={{ marginTop: 6, lineHeight: 1.7 }}>
-            Name: {bill.customerName || "Walk-in"}<br />
-            Phone: {bill.customerPhone || "N/A"}<br />
-            {bill.customerAadhar ? <>Aadhar: {bill.customerAadhar}<br /></> : null}
-            Address: {bill.customerAddress || "N/A"}
-          </div>
-        </div>
-      </div>
-
-      {bill.type === "sale" && (bill.items || []).some((it) => it.model || it.color || it.batteryType || it.motorPower || it.range || it.wheelSize) && (
-        <div style={{ border: "1px solid #eee", borderRadius: 8, padding: forPrint ? 8 : 12, marginBottom: forPrint ? 10 : 18 }}>
-          <b style={{ fontSize: forPrint ? 10.5 : 12.5 }}>🔧 Vehicle Specifications</b>
-          {(bill.items || []).map((it, i) => (
-            <div key={i} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(100px,1fr))", gap: 6, marginTop: 6, fontSize: forPrint ? 9.5 : 11.5 }}>
-              <div>MODEL<br /><b>{it.model || "N/A"}</b></div>
-              <div>COLOR<br /><b>{it.color || "N/A"}</b></div>
-              <div>BATTERY<br /><b>{it.batteryType || "N/A"}</b></div>
-              <div>MOTOR<br /><b>{it.motorPower || "N/A"}</b></div>
-              <div>RANGE<br /><b>{it.range || "N/A"}</b></div>
-              <div>WHEEL<br /><b>{it.wheelSize || "N/A"}</b></div>
+      <div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 16, borderBottom: "2px solid #0F4B3A", paddingBottom: 18, marginBottom: 20 }}>
+          <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+            {business?.logoUrl && <img src={business.logoUrl} crossOrigin="anonymous" style={{ width: 68, height: 68, objectFit: "contain", border: "1px solid #eee", borderRadius: 8 }} />}
+            <div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: "#0F4B3A" }}>{business?.name || "Business"}</div>
+              <div style={{ color: "#666", fontSize: 13 }}>{business?.tagline || ""}</div>
             </div>
-          ))}
-        </div>
-      )}
-
-      {bill.type !== "sale" && bill.serviceDesc && (
-        <div style={{ border: "1px solid #eee", borderRadius: 8, padding: forPrint ? 8 : 12, marginBottom: forPrint ? 10 : 18, fontSize: forPrint ? 10 : 12 }}>
-          <b>{bill.type === "repair" ? "Repair details" : "Service details"}</b>
-          <div style={{ marginTop: 4, whiteSpace: "pre-line" }}>{bill.serviceDesc}</div>
-        </div>
-      )}
-
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: forPrint ? 10.5 : 12.5, marginBottom: forPrint ? 10 : 18 }}>
-        <thead>
-          <tr style={{ background: "#0F4B3A", color: "#fff" }}>
-            <th style={{ padding: forPrint ? 5 : 8, textAlign: "left" }}>Item</th>
-            <th style={{ padding: forPrint ? 5 : 8, textAlign: "left" }}>Description</th>
-            <th style={{ padding: forPrint ? 5 : 8, textAlign: "right" }}>Qty</th>
-            <th style={{ padding: forPrint ? 5 : 8, textAlign: "right" }}>Price</th>
-            <th style={{ padding: forPrint ? 5 : 8, textAlign: "right" }}>Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          {(bill.items || []).map((it, i) => {
-            const unitPrice = Number(it.sellingPrice || 0);
-            return (
-              <tr key={i}>
-                <td style={{ border: "1px solid #ddd", padding: forPrint ? 5 : 8, fontWeight: 600 }}>{it.name}</td>
-                <td style={{ border: "1px solid #ddd", padding: forPrint ? 5 : 8, fontSize: forPrint ? 9.5 : 11.5 }}>
-                  {it.chassisNo ? <>Chassis: {it.chassisNo}<br /></> : null}
-                  {it.motorNo ? <>Motor: {it.motorNo}<br /></> : null}
-                  {it.batteryType ? <>Battery: {it.batteryType}{it.batteryPrice ? ` (ref. ${inr(it.batteryPrice)})` : ""}<br /></> : null}
-                  <span style={{ color: "#0F4B3A" }}>GST included</span>
-                </td>
-                <td style={{ border: "1px solid #ddd", padding: forPrint ? 5 : 8, textAlign: "right" }}>{it.qty}</td>
-                <td style={{ border: "1px solid #ddd", padding: forPrint ? 5 : 8, textAlign: "right" }}>{inr(unitPrice)}</td>
-                <td style={{ border: "1px solid #ddd", padding: forPrint ? 5 : 8, textAlign: "right", fontWeight: 600 }}>{inr(unitPrice * it.qty)}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <div style={{ border: "1px solid #eee", borderRadius: 8, padding: forPrint ? 10 : 14, width: forPrint ? 220 : 280, fontSize: forPrint ? 11 : 13 }}>
-          <div style={{ marginBottom: 8 }}>
-            <span style={{ background: "#eef7ee", color: "#0F4B3A", padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700 }}>
-              {(bill.paymentMode || "Cash").toUpperCase()}
-            </span>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between" }}><span>Subtotal</span><span>{inr(bill.subtotal)}</span></div>
-          <div style={{ display: "flex", justifyContent: "space-between" }}><span>GST ({bill.gstRate}%)</span><span>{inr(bill.gstAmount)}</span></div>
-          <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #ddd", marginTop: 8, paddingTop: 8, fontWeight: 700, color: "#0F4B3A", fontSize: forPrint ? 13 : 15 }}>
-            <span>TOTAL</span><span>{inr(bill.total)}</span>
+          <div style={{ textAlign: "right", fontSize: 13, color: "#333" }}>
+            <div>No: <b>{bill.invoiceNumber || "—"}</b></div>
+            <div>Date: <b>{fmtDate(bill.date)}</b></div>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20, fontSize: 13 }}>
+          <div style={{ border: "1px solid #eee", borderRadius: 8, padding: 14 }}>
+            <b>🏢 Business Details</b>
+            <div style={{ marginTop: 8, lineHeight: 1.9 }}>
+              Address: {business?.address || "N/A"}<br />
+              GSTIN: {business?.gstin || "N/A"}<br />
+              Phone: {business?.phone || "N/A"}<br />
+              Email: {business?.email || "N/A"}
+            </div>
+          </div>
+          <div style={{ border: "1px solid #eee", borderRadius: 8, padding: 14 }}>
+            <b>👤 Customer Details</b>
+            <div style={{ marginTop: 8, lineHeight: 1.9 }}>
+              Name: {bill.customerName || "Walk-in"}<br />
+              Phone: {bill.customerPhone || "N/A"}<br />
+              {bill.customerAadhar ? <>Aadhar: {bill.customerAadhar}<br /></> : null}
+              Address: {bill.customerAddress || "N/A"}
+            </div>
+          </div>
+        </div>
+
+        {bill.type === "sale" && (bill.items || []).some((it) => it.model || it.color || it.batteryType || it.motorPower || it.range || it.wheelSize) && (
+          <div style={{ border: "1px solid #eee", borderRadius: 8, padding: 14, marginBottom: 20 }}>
+            <b style={{ fontSize: 13 }}>🔧 Vehicle Specifications</b>
+            {(bill.items || []).map((it, i) => (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(110px,1fr))", gap: 10, marginTop: 10, fontSize: 12 }}>
+                <div>MODEL<br /><b>{it.model || "N/A"}</b></div>
+                <div>COLOR<br /><b>{it.color || "N/A"}</b></div>
+                <div>BATTERY<br /><b>{it.batteryType || "N/A"}</b></div>
+                <div>MOTOR<br /><b>{it.motorPower || "N/A"}</b></div>
+                <div>RANGE<br /><b>{it.range || "N/A"}</b></div>
+                <div>WHEEL<br /><b>{it.wheelSize || "N/A"}</b></div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {bill.type !== "sale" && bill.serviceDesc && (
+          <div style={{ border: "1px solid #eee", borderRadius: 8, padding: 14, marginBottom: 20, fontSize: 13 }}>
+            <b>{bill.type === "repair" ? "Repair details" : "Service details"}</b>
+            <div style={{ marginTop: 6, whiteSpace: "pre-line" }}>{bill.serviceDesc}</div>
+          </div>
+        )}
+
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 20 }}>
+          <thead>
+            <tr style={{ background: "#0F4B3A", color: "#fff" }}>
+              <th style={{ padding: 10, textAlign: "left" }}>Item</th>
+              <th style={{ padding: 10, textAlign: "left" }}>Description</th>
+              <th style={{ padding: 10, textAlign: "right" }}>Qty</th>
+              <th style={{ padding: 10, textAlign: "right" }}>Price</th>
+              <th style={{ padding: 10, textAlign: "right" }}>Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(bill.items || []).map((it, i) => {
+              const unitPrice = Number(it.sellingPrice || 0);
+              return (
+                <tr key={i}>
+                  <td style={{ border: "1px solid #ddd", padding: 10, fontWeight: 600 }}>{it.name}</td>
+                  <td style={{ border: "1px solid #ddd", padding: 10, fontSize: 11.5 }}>
+                    {it.chassisNo ? <>Chassis: {it.chassisNo}<br /></> : null}
+                    {it.motorNo ? <>Motor: {it.motorNo}<br /></> : null}
+                    {it.batteryType ? <>Battery: {it.batteryType}{it.batteryPrice ? ` (ref. ${inr(it.batteryPrice)})` : ""}<br /></> : null}
+                    <span style={{ color: "#0F4B3A" }}>GST included</span>
+                  </td>
+                  <td style={{ border: "1px solid #ddd", padding: 10, textAlign: "right" }}>{it.qty}</td>
+                  <td style={{ border: "1px solid #ddd", padding: 10, textAlign: "right" }}>{inr(unitPrice)}</td>
+                  <td style={{ border: "1px solid #ddd", padding: 10, textAlign: "right", fontWeight: 600 }}>{inr(unitPrice * it.qty)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <div style={{ border: "1px solid #eee", borderRadius: 8, padding: 16, width: 280, fontSize: 13 }}>
+            <div style={{ marginBottom: 10 }}>
+              <span style={{ background: "#eef7ee", color: "#0F4B3A", padding: "4px 12px", borderRadius: 20, fontSize: 12, fontWeight: 700 }}>
+                {(bill.paymentMode || "Cash").toUpperCase()}
+              </span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0" }}><span>Subtotal</span><span>{inr(bill.subtotal)}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0" }}><span>GST ({bill.gstRate}%)</span><span>{inr(bill.gstAmount)}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #ddd", marginTop: 10, paddingTop: 10, fontWeight: 700, color: "#0F4B3A", fontSize: 16 }}>
+              <span>TOTAL</span><span>{inr(bill.total)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ border: "1px solid #f0d98c", background: "#fffbea", borderRadius: 8, padding: 14, marginTop: 20, fontSize: 12.5 }}>
+          <b>Warranty Information</b>
+          <div style={{ marginTop: 6, whiteSpace: "pre-line" }}>
+            Motor, Controller & Charger Warranty: 12 Months{"\n"}Battery Warranty: 12 Months
           </div>
         </div>
       </div>
 
-      <div style={{ border: "1px solid #f0d98c", background: "#fffbea", borderRadius: 8, padding: forPrint ? 8 : 12, marginTop: forPrint ? 10 : 18, fontSize: forPrint ? 10 : 12 }}>
-        <b>Warranty Information</b>
-        <div style={{ marginTop: 4, whiteSpace: "pre-line" }}>
-          Motor, Controller & Charger Warranty: 12 Months{"\n"}Battery Warranty: 12 Months
-        </div>
-      </div>
-
-      <div style={{ textAlign: "center", marginTop: forPrint ? 16 : 30, fontSize: forPrint ? 10 : 12, color: "#555" }}>
+      {/* Anchored to the bottom of the page in print (marginTop:"auto" inside
+          the flex column above) instead of trailing right after the content
+          with a huge gap beneath it. */}
+      <div style={{ marginTop: forPrint ? "auto" : 30, paddingTop: 24, textAlign: "center", fontSize: 12.5, color: "#555" }}>
         <div>If you have any questions about this invoice, please contact us at {business?.phone || "N/A"}</div>
-        <div style={{ fontWeight: 700, marginTop: 4 }}>Thank you!</div>
-        <div style={{ textAlign: "right", marginTop: forPrint ? 22 : 40 }}>
+        <div style={{ fontWeight: 700, marginTop: 6 }}>Thank you!</div>
+        <div style={{ textAlign: "right", marginTop: 40 }}>
           _______________________<br />
           Authorized Signatory<br />
           <b>{business?.name || "Business"}</b>

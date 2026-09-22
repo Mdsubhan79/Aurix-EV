@@ -160,22 +160,33 @@ function InvoiceCard({ bill, business, innerRef, forPrint }) {
       ref={innerRef}
       style={{
         background: "#fff", color: "#12151A",
-        width: forPrint ? "190mm" : "100%",
-        maxWidth: forPrint ? "190mm" : 794,
+        // Same width/height/flex treatment everywhere — on-screen, in the
+        // PDF capture, and in print. Previously the on-screen node (which
+        // is what html2canvas actually captures for the PDF) never got the
+        // minHeight/flex treatment, only the separate print-only portal
+        // copy did — so the PDF captured a short card and placed it at the
+        // top of the A4 page without stretching, leaving a blank bottom
+        // half. Now there's truly one layout reused for all three outputs.
+        width: "190mm",
+        maxWidth: "190mm",
         // minHeight + flex column lets the footer/signature anchor to the
         // bottom of the page (see marginTop:"auto" below) instead of the
         // whole invoice sitting as a small block at the top of an otherwise
         // empty A4 sheet. 273mm keeps a safety margin under the 277mm
         // content area (297mm page - 10mm top/bottom margins from @page).
-        minHeight: forPrint ? "273mm" : undefined,
-        display: forPrint ? "flex" : undefined,
-        flexDirection: forPrint ? "column" : undefined,
+        minHeight: "273mm",
+        display: "flex",
+        flexDirection: "column",
         boxSizing: "border-box",
         margin: "0 auto",
-        padding: forPrint ? 28 : 32,
+        padding: 28,
         borderRadius: forPrint ? 0 : 8,
         fontFamily: "'Inter',sans-serif",
+        // Only cosmetic difference: a light border for on-screen viewing so
+        // the "page" is visually distinguishable from the app's dark
+        // background. Print/PDF drop it since the output IS the page.
         border: forPrint ? "none" : "1px solid #eee",
+        boxShadow: forPrint ? "none" : "0 1px 3px rgba(0,0,0,0.08)",
         fontSize: 13,
       }}
     >
@@ -295,7 +306,7 @@ function InvoiceCard({ bill, business, innerRef, forPrint }) {
       {/* Anchored to the bottom of the page in print (marginTop:"auto" inside
           the flex column above) instead of trailing right after the content
           with a huge gap beneath it. */}
-      <div style={{ marginTop: forPrint ? "auto" : 30, paddingTop: 24, textAlign: "center", fontSize: 12.5, color: "#555" }}>
+      <div style={{ marginTop: "auto", paddingTop: 24, textAlign: "center", fontSize: 12.5, color: "#555" }}>
         <div>If you have any questions about this invoice, please contact us at {business?.phone || "N/A"}</div>
         <div style={{ fontWeight: 700, marginTop: 6 }}>Thank you!</div>
         <div style={{ textAlign: "right", marginTop: 40 }}>
