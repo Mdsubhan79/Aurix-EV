@@ -18,7 +18,7 @@ import {
   X,
   Check
 } from "lucide-react";
-import { api, socket, S, Field, Modal, Empty, inr, fmtDate, todayISO } from "./App";
+import { api, socket, S, Field, Modal, Empty, inr, fmtDate, todayISO } from "./App3";
 
 
 
@@ -27,18 +27,14 @@ const VEHICLE_SPEC_FIELDS = [
   ["color", "Color"],
   ["batteryType", "Battery"],
   ["motorPower", "Motor Power"],
-  ["range", "Range"],
-  ["topSpeed", "Top Speed"],
-  ["chargingTime", "Charging Time"],
-  ["controller", "Controller"],
   ["wheelSize", "Wheel Size"],
 ];
 
 function emptyItem() {
   return {
     scooter: null, name: "", description: "", chassisNo: "", motorNo: "", warranty: "",
-    model: "", color: "", scooterPrice: 0, batteryType: "", batteryPrice: 0, motorPower: "", range: "",
-    topSpeed: "", chargingTime: "", controller: "", wheelSize: "",
+    model: "", color: "", scooterPrice: 0, batteryType: "", batteryPrice: 0, motorPower: "", 
+     wheelSize: "",
     actualPrice: 0, sellingPrice: 0, qty: 1,
   };
 }
@@ -89,11 +85,7 @@ function useToast() {
   return [node, show];
 }
 
-// Renders into a dedicated DOM node that lives OUTSIDE #root (a direct child
-// of <body>). Elements hidden with visibility:hidden still reserve their
-// layout box, which is what caused blank gaps in printed output before. By
-// portaling the invoice to a sibling of #root and hiding #root entirely
-// during print, there's no leftover app layout to leak blank space in.
+
 function usePrintRoot() {
   const ref = useRef(null);
   if (ref.current === null && typeof document !== "undefined") {
@@ -111,7 +103,7 @@ function usePrintRoot() {
 function usePrintStyles() {
   useEffect(() => {
     const existing = document.getElementById("bill-print-css");
-    if (existing) existing.remove(); // replace any stale copy from an older build
+    if (existing) existing.remove(); 
     const style = document.createElement("style");
     style.id = "bill-print-css";
     style.innerHTML = `
@@ -151,8 +143,7 @@ function usePrintStyles() {
   }, []);
 }
 
-/* One invoice layout, reused for the on-screen preview, the PDF capture
-   target, and the dedicated print copy — so all three are always identical. */
+
 function InvoiceCard({ bill, business, innerRef, forPrint }) {
   return (
     <div
@@ -160,22 +151,21 @@ function InvoiceCard({ bill, business, innerRef, forPrint }) {
       ref={innerRef}
       style={{
         background: "#fff", color: "#12151A",
-        width: forPrint ? "190mm" : "100%",
-        maxWidth: forPrint ? "190mm" : 794,
-        // minHeight + flex column lets the footer/signature anchor to the
-        // bottom of the page (see marginTop:"auto" below) instead of the
-        // whole invoice sitting as a small block at the top of an otherwise
-        // empty A4 sheet. 273mm keeps a safety margin under the 277mm
-        // content area (297mm page - 10mm top/bottom margins from @page).
-        minHeight: forPrint ? "273mm" : undefined,
-        display: forPrint ? "flex" : undefined,
-        flexDirection: forPrint ? "column" : undefined,
+       
+        width: "190mm",
+        maxWidth: "190mm",
+   
+        minHeight: "273mm",
+        display: "flex",
+        flexDirection: "column",
         boxSizing: "border-box",
         margin: "0 auto",
-        padding: forPrint ? 28 : 32,
+        padding: 28,
         borderRadius: forPrint ? 0 : 8,
         fontFamily: "'Inter',sans-serif",
+     
         border: forPrint ? "none" : "1px solid #eee",
+        boxShadow: forPrint ? "none" : "0 1px 3px rgba(0,0,0,0.08)",
         fontSize: 13,
       }}
     >
@@ -215,7 +205,7 @@ function InvoiceCard({ bill, business, innerRef, forPrint }) {
           </div>
         </div>
 
-        {bill.type === "sale" && (bill.items || []).some((it) => it.model || it.color || it.batteryType || it.motorPower || it.range || it.wheelSize) && (
+        {bill.type === "sale" && (bill.items || []).some((it) => it.model || it.color || it.batteryType || it.motorPower || it.wheelSize) && (
           <div style={{ border: "1px solid #eee", borderRadius: 8, padding: 14, marginBottom: 20 }}>
             <b style={{ fontSize: 13 }}>🔧 Vehicle Specifications</b>
             {(bill.items || []).map((it, i) => (
@@ -224,7 +214,6 @@ function InvoiceCard({ bill, business, innerRef, forPrint }) {
                 <div>COLOR<br /><b>{it.color || "N/A"}</b></div>
                 <div>BATTERY<br /><b>{it.batteryType || "N/A"}</b></div>
                 <div>MOTOR<br /><b>{it.motorPower || "N/A"}</b></div>
-                <div>RANGE<br /><b>{it.range || "N/A"}</b></div>
                 <div>WHEEL<br /><b>{it.wheelSize || "N/A"}</b></div>
               </div>
             ))}
@@ -257,7 +246,7 @@ function InvoiceCard({ bill, business, innerRef, forPrint }) {
                   <td style={{ border: "1px solid #ddd", padding: 10, fontSize: 11.5 }}>
                     {it.chassisNo ? <>Chassis: {it.chassisNo}<br /></> : null}
                     {it.motorNo ? <>Motor: {it.motorNo}<br /></> : null}
-                    {it.batteryType ? <>Battery: {it.batteryType}{it.batteryPrice ? ` (ref. ${inr(it.batteryPrice)})` : ""}<br /></> : null}
+                    {it.batteryType ? <>Battery: {it.batteryType}<br /></> : null}
                     <span style={{ color: "#0F4B3A" }}>GST included</span>
                   </td>
                   <td style={{ border: "1px solid #ddd", padding: 10, textAlign: "right" }}>{it.qty}</td>
@@ -287,15 +276,13 @@ function InvoiceCard({ bill, business, innerRef, forPrint }) {
         <div style={{ border: "1px solid #f0d98c", background: "#fffbea", borderRadius: 8, padding: 14, marginTop: 20, fontSize: 12.5 }}>
           <b>Warranty Information</b>
           <div style={{ marginTop: 6, whiteSpace: "pre-line" }}>
-            Motor, Controller & Charger Warranty: 12 Months{"\n"}Battery Warranty: 12 Months
+            Motor, Controller & Charger Warranty: 12 Months{"\n"}Battery Warranty: 18 Months
           </div>
         </div>
       </div>
 
-      {/* Anchored to the bottom of the page in print (marginTop:"auto" inside
-          the flex column above) instead of trailing right after the content
-          with a huge gap beneath it. */}
-      <div style={{ marginTop: forPrint ? "auto" : 30, paddingTop: 24, textAlign: "center", fontSize: 12.5, color: "#555" }}>
+  
+      <div style={{ marginTop: "auto", paddingTop: 24, textAlign: "center", fontSize: 12.5, color: "#555" }}>
         <div>If you have any questions about this invoice, please contact us at {business?.phone || "N/A"}</div>
         <div style={{ fontWeight: 700, marginTop: 6 }}>Thank you!</div>
         <div style={{ textAlign: "right", marginTop: 40 }}>
@@ -314,7 +301,7 @@ export default function Billing({ business }) {
   const previewRef = useRef(null);
   const [toastNode, showToast] = useToast();
 
-  const [mode, setMode] = useState("list"); // list | create | edit | view
+  const [mode, setMode] = useState("list"); 
   const [bills, setBills] = useState([]);
   const [scooters, setScooters] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -328,10 +315,7 @@ export default function Billing({ business }) {
   const [saving, setSaving] = useState(false);
 
   const loadBills = useCallback(() => api.get("/bills").then((res) => setBills(res.data)), []);
-  // Only scooters still in stock show up as pickable — once one is sold
-  // through a bill it's deleted from the catalogue (see saveBill below), so
-  // it naturally drops out of this list and out of the Catalogue tab, while
-  // still being visible in Sales via the bill record that was already saved.
+
   const loadScooters = useCallback(() => api.get("/scooters").then((res) => setScooters(res.data)), []);
 
   useEffect(() => {
@@ -392,14 +376,9 @@ export default function Billing({ business }) {
       items: [...d.items, {
         ...emptyItem(),
         scooter: sc._id, name: sc.name, chassisNo: sc.chassisNo, motorNo: sc.motorNo,
-        // Warranty is asked fresh for this sale, not auto-filled from the
-        // catalogue — it can differ per unit/sale, same reasoning as battery
-        // and pricing below.
+    
         warranty: "",
-        // scooterPrice is shown as a plain reference figure only — it is
-        // NEVER copied into sellingPrice, so it can't get double-counted
-        // with the battery price. Battery info/price, actual cost, and
-        // selling price are all entered fresh for this specific sale.
+      
         scooterPrice: Number(sc.scooterPrice) || 0,
         batteryType: "", batteryPrice: 0,
         actualPrice: 0, sellingPrice: 0, qty: 1,
@@ -431,11 +410,7 @@ export default function Billing({ business }) {
     paymentMode: draft.paymentMode,
   });
 
-  // After a bill is created (not edited — see note below), any item that was
-  // picked from the catalogue (item.scooter is set) gets removed from the
-  // catalogue since it's now sold. The bill itself already has a full
-  // snapshot of that item's details, so it keeps showing correctly under
-  // Sales even after the catalogue entry is gone.
+
   const removeSoldScootersFromCatalogue = async (items) => {
     const soldScooterIds = (items || [])
       .filter((it) => it.scooter)
@@ -468,9 +443,7 @@ export default function Billing({ business }) {
       if (mode === "edit" && editingId) {
         res = await api.put(`/bills/${editingId}`, payload);
         showToast("Bill updated");
-        // Not removing scooters here — editing an existing bill shouldn't
-        // re-trigger a catalogue removal for items that may have already
-        // been removed (or weren't part of the original sale).
+      
       } else {
         res = await api.post("/bills", payload);
         showToast("Bill created");
@@ -758,15 +731,7 @@ export default function Billing({ business }) {
                 </>
               )}
 
-              {/* Service/repair items intentionally stop here — just name,
-                  qty, actual cost, and selling price. No chassis/motor/
-                  warranty/battery/vehicle-spec fields, since those describe
-                  a physical scooter unit, not a charge line. */}
-
-              {/* 3. Actual cost, then 4. Selling price — selling price is
-                  what actually drives the bill amount. Battery price above
-                  is informational only, to help arrive at these two numbers;
-                  it isn't automatically added into the total. */}
+              
               <div style={{ marginBottom: 4 }}>
                 <div style={{ fontSize: 10.5, color: "#5A616F", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 5 }}>Pricing (per unit)</div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

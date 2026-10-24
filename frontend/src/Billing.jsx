@@ -4,23 +4,10 @@ import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
 import {
-  Plus,
-  Trash2,
-  RefreshCw,
-  ArrowLeft,
-  Eye,
-  Pencil,
-  Download,
-  MessageCircle,
-  Printer,
-  Calculator,
-  Search,
-  X,
-  Check
+  Plus, Trash2, RefreshCw, ArrowLeft, Eye, Pencil, Download, MessageCircle,
+  Printer, Calculator, Search, X, Check
 } from "lucide-react";
-import { api, socket, S, Field, Modal, Empty, inr, fmtDate, todayISO } from "./App";
-
-
+import { api, socket, S, Field, Modal, Empty, inr, fmtDate, todayISO, PeriodPicker, defaultPeriod, periodParams } from "./App";
 
 const VEHICLE_SPEC_FIELDS = [
   ["model", "Model"],
@@ -33,8 +20,8 @@ const VEHICLE_SPEC_FIELDS = [
 function emptyItem() {
   return {
     scooter: null, name: "", description: "", chassisNo: "", motorNo: "", warranty: "",
-    model: "", color: "", scooterPrice: 0, batteryType: "", batteryPrice: 0, motorPower: "", 
-     wheelSize: "",
+    model: "", color: "", scooterPrice: 0, batteryType: "", batteryPrice: 0, motorPower: "",
+    wheelSize: "",
     actualPrice: 0, sellingPrice: 0, qty: 1,
   };
 }
@@ -65,7 +52,6 @@ function computeTotals(items, gstRate) {
   return { subtotal, gstAmount, total };
 }
 
-
 function useToast() {
   const [toast, setToast] = useState(null);
   const show = useCallback((message, kind = "success") => {
@@ -85,7 +71,6 @@ function useToast() {
   return [node, show];
 }
 
-
 function usePrintRoot() {
   const ref = useRef(null);
   if (ref.current === null && typeof document !== "undefined") {
@@ -103,7 +88,7 @@ function usePrintRoot() {
 function usePrintStyles() {
   useEffect(() => {
     const existing = document.getElementById("bill-print-css");
-    if (existing) existing.remove(); 
+    if (existing) existing.remove();
     const style = document.createElement("style");
     style.id = "bill-print-css";
     style.innerHTML = `
@@ -113,16 +98,9 @@ function usePrintStyles() {
       }
       @media print {
         html, body { margin: 0 !important; padding: 0 !important; height: auto !important; min-height: 0 !important; background: #fff !important; }
-        /* The app's global stylesheet sets html/body/#root to min-height:100vh
-           for the normal screen UI, but that rule isn't scoped to @media
-           screen, so it was leaking into print too — forcing the printed
-           page to reserve a full extra viewport of blank space below the
-           invoice. The override above cancels it out for print specifically. */
-        /* Hide every top-level element except the print node itself — this
-           doesn't depend on guessing the app's root element id (the old
-           "#root" guess was wrong for this app, which is why print came out
-           blank: the real root wasn't being hidden, but more importantly the
-           invoice copy could end up mis-targeted). */
+        /* html/body/#root have min-height:100vh for the screen UI; this cancels it for print
+           so the printed page doesn't reserve a blank extra viewport below the invoice. */
+        /* Hide every top-level element except the print node itself. */
         body > *:not(#bill-print-root) { display: none !important; }
         #bill-print-root {
           display: block !important;
@@ -143,7 +121,6 @@ function usePrintStyles() {
   }, []);
 }
 
-
 function InvoiceCard({ bill, business, innerRef, forPrint }) {
   return (
     <div
@@ -151,10 +128,8 @@ function InvoiceCard({ bill, business, innerRef, forPrint }) {
       ref={innerRef}
       style={{
         background: "#fff", color: "#12151A",
-       
         width: "190mm",
         maxWidth: "190mm",
-   
         minHeight: "273mm",
         display: "flex",
         flexDirection: "column",
@@ -163,7 +138,6 @@ function InvoiceCard({ bill, business, innerRef, forPrint }) {
         padding: 28,
         borderRadius: forPrint ? 0 : 8,
         fontFamily: "'Inter',sans-serif",
-     
         border: forPrint ? "none" : "1px solid #eee",
         boxShadow: forPrint ? "none" : "0 1px 3px rgba(0,0,0,0.08)",
         fontSize: 13,
@@ -281,7 +255,6 @@ function InvoiceCard({ bill, business, innerRef, forPrint }) {
         </div>
       </div>
 
-  
       <div style={{ marginTop: "auto", paddingTop: 24, textAlign: "center", fontSize: 12.5, color: "#555" }}>
         <div>If you have any questions about this invoice, please contact us at {business?.phone || "N/A"}</div>
         <div style={{ fontWeight: 700, marginTop: 6 }}>Thank you!</div>
@@ -301,20 +274,24 @@ export default function Billing({ business }) {
   const previewRef = useRef(null);
   const [toastNode, showToast] = useToast();
 
-  const [mode, setMode] = useState("list"); 
+  const [mode, setMode] = useState("list");
   const [bills, setBills] = useState([]);
   const [scooters, setScooters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(null);
   const [search, setSearch] = useState("");
   const [filterDate, setFilterDate] = useState("");
+  const [period, setPeriod] = useState(defaultPeriod()); // year + month filter
 
   const [draft, setDraft] = useState(emptyDraft(business));
   const [editingId, setEditingId] = useState(null);
   const [viewing, setViewing] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  const loadBills = useCallback(() => api.get("/bills").then((res) => setBills(res.data)), []);
+  const loadBills = useCallback(
+    () => api.get("/bills", { params: periodParams(period) }).then((res) => setBills(res.data)),
+    [period]
+  );
 
   const loadScooters = useCallback(() => api.get("/scooters").then((res) => setScooters(res.data)), []);
 
@@ -376,9 +353,7 @@ export default function Billing({ business }) {
       items: [...d.items, {
         ...emptyItem(),
         scooter: sc._id, name: sc.name, chassisNo: sc.chassisNo, motorNo: sc.motorNo,
-    
         warranty: "",
-      
         scooterPrice: Number(sc.scooterPrice) || 0,
         batteryType: "", batteryPrice: 0,
         actualPrice: 0, sellingPrice: 0, qty: 1,
@@ -410,15 +385,10 @@ export default function Billing({ business }) {
     paymentMode: draft.paymentMode,
   });
 
-
   const removeSoldScootersFromCatalogue = async (items) => {
-    const soldScooterIds = (items || [])
-      .filter((it) => it.scooter)
-      .map((it) => it.scooter);
+    const soldScooterIds = (items || []).filter((it) => it.scooter).map((it) => it.scooter);
     if (soldScooterIds.length === 0) return;
-    await Promise.all(
-      soldScooterIds.map((id) => api.delete(`/scooters/${id}`).catch(() => {}))
-    );
+    await Promise.all(soldScooterIds.map((id) => api.delete(`/scooters/${id}`).catch(() => {})));
     loadScooters();
   };
 
@@ -443,7 +413,6 @@ export default function Billing({ business }) {
       if (mode === "edit" && editingId) {
         res = await api.put(`/bills/${editingId}`, payload);
         showToast("Bill updated");
-      
       } else {
         res = await api.post("/bills", payload);
         showToast("Bill created");
@@ -504,11 +473,7 @@ export default function Billing({ business }) {
     if (!node) return showToast("Invoice element not found", "error");
     showToast("Generating PDF…");
     try {
-      const canvas = await html2canvas(node, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#ffffff",
-      });
+      const canvas = await html2canvas(node, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
 
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       const pageW = 210, pageH = 297, margin = 8;
@@ -542,28 +507,16 @@ export default function Billing({ business }) {
 
     return (
       <div>
+        <PeriodPicker period={period} setPeriod={setPeriod} />
+
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
           <span style={{ background: "rgba(196,241,53,0.12)", color: "#C4F135", padding: "3px 10px", borderRadius: 20, fontSize: 12, fontWeight: 700 }}>
             {bills.length} total
           </span>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button
-              onClick={openCreate}
-              style={S.primaryBtn}
-            >
-              <Plus size={16} />
-              New bill
-            </button>
-
-            <button
-              onClick={() => {
-                setLoading(true);
-                loadBills().finally(() => setLoading(false));
-              }}
-              style={S.ghostBtn}
-            >
-              <RefreshCw size={15} />
-              Refresh
+            <button onClick={openCreate} style={S.primaryBtn}><Plus size={16} /> New bill</button>
+            <button onClick={() => { setLoading(true); loadBills().finally(() => setLoading(false)); }} style={S.ghostBtn}>
+              <RefreshCw size={15} /> Refresh
             </button>
           </div>
         </div>
@@ -653,7 +606,7 @@ export default function Billing({ business }) {
                 <option value="" disabled>
                   {scooters.length === 0 ? "No scooters in stock" : "Add scooter from catalogue…"}
                 </option>
-                {scooters.map((s) => <option key={s._id} value={s._id}>{s.name} — {inr(s.sellingPrice)}</option>)}
+                {scooters.map((s) => <option key={s._id} value={s._id}>{s.name} — {inr(s.scooterPrice)}</option>)}
               </select>
             )}
             {draft.type !== "sale" && (
@@ -661,9 +614,7 @@ export default function Billing({ business }) {
             )}
           </div>
 
-          {/* One description field for the whole bill — previously this was
-              placed inside the items loop, so it duplicated itself once per
-              item while every copy edited the same underlying value. */}
+          {/* One description field for the whole bill */}
           {draft.type !== "sale" && (
             <div style={{ marginTop: 10 }}>
               <label style={{ fontSize: 11, color: "#8B93A1", display: "block", marginBottom: 4 }}>Describe the work done (optional)</label>
@@ -698,9 +649,7 @@ export default function Billing({ business }) {
                     <input value={it.warranty} onChange={(e) => updateItem(idx, "warranty", e.target.value)} placeholder="e.g. 12 months" style={S.input} />
                   </div>
 
-                  {/* 1. Scooter price — reference only, straight from the
-                      catalogue. Not editable and never copied into Selling
-                      price, so it can never get double-counted. */}
+                  {/* Scooter price — catalogue reference only, never copied into Selling price */}
                   {Number(it.scooterPrice) > 0 && (
                     <div style={{ marginBottom: 10 }}>
                       <label style={{ fontSize: 11, color: "#8B93A1", display: "block", marginBottom: 4 }}>Scooter price (catalogue reference)</label>
@@ -708,7 +657,6 @@ export default function Billing({ business }) {
                     </div>
                   )}
 
-                  {/* 2. Battery — info first, then its price */}
                   <div style={{ marginBottom: 10 }}>
                     <div style={{ fontSize: 10.5, color: "#5A616F", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 5 }}>Battery (this sale)</div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -731,7 +679,6 @@ export default function Billing({ business }) {
                 </>
               )}
 
-              
               <div style={{ marginBottom: 4 }}>
                 <div style={{ fontSize: 10.5, color: "#5A616F", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 5 }}>Pricing (per unit)</div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -805,8 +752,7 @@ export default function Billing({ business }) {
       {/* On-screen copy — also the PDF capture target via previewRef */}
       <InvoiceCard bill={bill} business={business} innerRef={previewRef} />
 
-      {/* Print-only copy, portaled outside #root so no app layout (sidebar,
-          topbar, padding) can ever leak blank space into the printed page */}
+      {/* Print-only copy, portaled outside #root so no app layout leaks into the printed page */}
       {printRoot && createPortal(<InvoiceCard bill={bill} business={business} forPrint />, printRoot)}
 
       {toastNode}
