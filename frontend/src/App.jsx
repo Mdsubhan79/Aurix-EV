@@ -1,10 +1,9 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import axios from "axios";
 import { io } from "socket.io-client";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
 import "./responsive.css";
-import Billing from "./Billing";
+// Billing (+ html2canvas / jsPDF) is loaded on demand so the first screen shows fast
+const Billing = React.lazy(() => import("./Billing"));
 import {
   Zap, LayoutDashboard, Bike, Receipt, TrendingUp, Wallet, Users, Settings as SettingsIcon,
   Plus, X, Trash2, Edit2, Search, Download, Share2, ChevronRight, ChevronDown, IndianRupee, MapPin,
@@ -66,34 +65,49 @@ export const fmtDate = (d) =>
 
 export const todayISO = () => new Date().toISOString().slice(0, 10);
 
-/* ---- Year / Month period filter (replaces Today / Week / Month / Year tabs) ---- */
-export const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
+/* ---- Range filter: Year + From month + To month (everything in between) ---- */
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
-// month: 0 = whole year, 1-12 = a specific month
-export const defaultPeriod = () => {
-  const d = new Date();
-  return { year: d.getFullYear(), month: d.getMonth() + 1 };
+// default = whole current year (January to December)
+export const defaultPeriod = () => ({ year: new Date().getFullYear(), from: 1, to: 12 });
+export const periodParams = (p) => ({ year: p.year, fromMonth: p.from, toMonth: p.to });
+export const periodLabel = (p) => {
+  if (p.from === 1 && p.to === 12) return `Year ${p.year}`;
+  if (p.from === p.to) return `${MONTHS[p.from - 1]} ${p.year}`;
+  return `${MONTHS[p.from - 1].slice(0, 3)} – ${MONTHS[p.to - 1].slice(0, 3)} ${p.year}`;
 };
-export const periodParams = (p) => (p.month ? { year: p.year, month: p.month } : { year: p.year });
-export const periodLabel = (p) => (p.month ? `${MONTHS[p.month - 1]} ${p.year}` : `Full Year ${p.year}`);
 
 export function PeriodPicker({ period, setPeriod }) {
   const cy = new Date().getFullYear();
   const years = [];
   for (let y = cy + 1; y >= cy - 6; y--) years.push(y);
-  const sel = { ...S.input, width: "auto", minWidth: 120, cursor: "pointer", fontWeight: 600 };
+  const sel = { ...S.input, width: "auto", minWidth: 110, cursor: "pointer", fontWeight: 600 };
+  const lab = { fontSize: 10.5, color: "#5A616F", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 4 };
+
+  // keep From <= To at all times
+  const setFrom = (v) => setPeriod((p) => ({ ...p, from: v, to: Math.max(p.to, v) }));
+  const setTo = (v) => setPeriod((p) => ({ ...p, to: v, from: Math.min(p.from, v) }));
+
   return (
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
-      <select value={period.year} onChange={(e) => setPeriod((p) => ({ ...p, year: Number(e.target.value) }))} style={sel}>
-        {years.map((y) => <option key={y} value={y}>{y}</option>)}
-      </select>
-      <select value={period.month} onChange={(e) => setPeriod((p) => ({ ...p, month: Number(e.target.value) }))} style={sel}>
-        <option value={0}>All months</option>
-        {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
-      </select>
+    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16, alignItems: "flex-end" }}>
+      <div>
+        <div style={lab}>Year</div>
+        <select value={period.year} onChange={(e) => setPeriod((p) => ({ ...p, year: Number(e.target.value) }))} style={sel}>
+          {years.map((y) => <option key={y} value={y}>{y}</option>)}
+        </select>
+      </div>
+      <div>
+        <div style={lab}>From</div>
+        <select value={period.from} onChange={(e) => setFrom(Number(e.target.value))} style={sel}>
+          {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+        </select>
+      </div>
+      <div>
+        <div style={lab}>To</div>
+        <select value={period.to} onChange={(e) => setTo(Number(e.target.value))} style={sel}>
+          {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+        </select>
+      </div>
     </div>
   );
 }
@@ -128,22 +142,37 @@ export default function App() {
       setStage("login");
       return;
     }
+    // Show the app instantly from the last session, then verify in the background
+    let cached = null;
+    try { cached = JSON.parse(localStorage.getItem("voltline_session") || "null"); } catch { /* ignore */ }
+    if (cached?.owner && cached?.business) {
+      setOwner(cached.owner);
+      setBusiness(cached.business);
+      socket.connect();
+      setStage("app");
+    }
     api
       .get("/auth/me")
       .then((res) => {
         setOwner(res.data.owner);
         setBusiness(res.data.business);
-        socket.connect();
-        setStage(res.data.business ? "app" : "onboarding");
+        localStorage.setItem("voltline_session", JSON.stringify({ owner: res.data.owner, business: res.data.business }));
+        if (!socket.connected) socket.connect();
+        setStage((cur) => (res.data.business ? "app" : "onboarding"));
       })
-      .catch(() => {
-        localStorage.removeItem("voltline_token");
-        setStage("login");
+      .catch((err) => {
+        // Only log out when the token is really invalid; keep the cached app on network errors
+        if (err.response?.status === 401 || !cached) {
+          localStorage.removeItem("voltline_token");
+          localStorage.removeItem("voltline_session");
+          setStage("login");
+        }
       });
   }, []);
 
   const handleLoggedIn = (data) => {
     localStorage.setItem("voltline_token", data.token);
+    localStorage.setItem("voltline_session", JSON.stringify({ owner: data.owner, business: data.business }));
     setOwner(data.owner);
     setBusiness(data.business);
     socket.connect();
@@ -152,18 +181,20 @@ export default function App() {
 
   const handleOnboarded = (biz) => {
     setBusiness(biz);
+    localStorage.setItem("voltline_session", JSON.stringify({ owner, business: biz }));
     setStage("loading");
   };
 
   useEffect(() => {
     if (stage === "loading") {
-      const t = setTimeout(() => setStage("app"), 1600);
+      const t = setTimeout(() => setStage("app"), 700);
       return () => clearTimeout(t);
     }
   }, [stage]);
 
   const logout = () => {
     localStorage.removeItem("voltline_token");
+    localStorage.removeItem("voltline_session");
     socket.disconnect();
     setOwner(null);
     setBusiness(null);
@@ -173,7 +204,11 @@ export default function App() {
   return (
     <>
       <GlobalStyles />
-      {stage === "boot" && <div style={{ background: "#12151A", minHeight: "100vh" }} />}
+      {stage === "boot" && (
+        <div style={S.centerScreen}>
+          <div style={{ ...S.boltBadge, width: 44, height: 44, borderRadius: 13 }}><Zap size={24} color="#12151A" strokeWidth={2.5} /></div>
+        </div>
+      )}
       {stage === "login" && <LoginScreen onLoggedIn={handleLoggedIn} />}
       {stage === "onboarding" && <OnboardingScreen onDone={handleOnboarded} />}
       {stage === "loading" && <LoadingScreen business={business} />}
@@ -341,7 +376,7 @@ function LoadingScreen({ business }) {
   useEffect(() => {
     const start = Date.now();
     const iv = setInterval(() => {
-      const p = Math.min(100, ((Date.now() - start) / 1500) * 100);
+      const p = Math.min(100, ((Date.now() - start) / 600) * 100);
       setPct(p);
       if (p >= 100) clearInterval(iv);
     }, 30);
@@ -396,7 +431,11 @@ function AppShell({ owner, business, setBusiness, tab, setTab, onLogout }) {
         <div style={{ flex: 1, padding: isMobile ? "16px 14px 90px" : "24px 32px 40px", overflowY: "auto" }}>
           {tab === "dashboard" && <Dashboard setTab={setTab} />}
           {tab === "catalogue" && <Catalogue />}
-          {tab === "billing" && <Billing business={business} />}
+          {tab === "billing" && (
+            <React.Suspense fallback={<Empty text="Loading billing…" />}>
+              <Billing business={business} />
+            </React.Suspense>
+          )}
           {tab === "sales" && <Sales />}
           {tab === "expenses" && <Expenses business={business} />}
           {tab === "partners" && <Partners business={business} />}
@@ -966,7 +1005,8 @@ function getCategoryFromNote(note = "") {
 }
 
 // jsPDF's built-in fonts can't print the rupee sign, so the PDF uses "Rs."
-function generateExpensePdf(groups, business, period) {
+async function generateExpensePdf(groups, business, period) {
+  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const W = 210, M = 14;
   const GREEN = [15, 75, 58];
@@ -1136,10 +1176,10 @@ function Expenses({ business }) {
     if (!allPicked) groups.forEach((g) => { next[g.key] = true; });
     setPicked(next);
   };
-  const makePdf = () => {
+  const makePdf = async () => {
     if (selectedGroups.length === 0) return;
     try {
-      generateExpensePdf(selectedGroups, business, period);
+      await generateExpensePdf(selectedGroups, business, period);
       setPdfOpen(false);
     } catch (err) {
       console.error("PDF error:", err);
@@ -1622,6 +1662,10 @@ function SettingsTab({ business, setBusiness }) {
         updated = (await api.post("/business/logo", fd, { headers: { "Content-Type": "multipart/form-data" } })).data;
       }
       setBusiness(updated);
+      try {
+        const c = JSON.parse(localStorage.getItem("voltline_session") || "null");
+        if (c) localStorage.setItem("voltline_session", JSON.stringify({ ...c, business: updated }));
+      } catch { /* ignore */ }
     } finally {
       setBusy(false);
     }

@@ -1,7 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
-import jsPDF from "jspdf";
-import html2canvas from "html2canvas";
 
 import {
   Plus, Trash2, RefreshCw, ArrowLeft, Eye, Pencil, Download, MessageCircle,
@@ -281,7 +279,7 @@ export default function Billing({ business }) {
   const [deleting, setDeleting] = useState(null);
   const [search, setSearch] = useState("");
   const [filterDate, setFilterDate] = useState("");
-  const [period, setPeriod] = useState(defaultPeriod()); // year + month filter
+  const [period, setPeriod] = useState(defaultPeriod()); // year filter
 
   const [draft, setDraft] = useState(emptyDraft(business));
   const [editingId, setEditingId] = useState(null);
@@ -295,10 +293,13 @@ export default function Billing({ business }) {
 
   const loadScooters = useCallback(() => api.get("/scooters").then((res) => setScooters(res.data)), []);
 
+  // bills reload when the year changes; scooters only load once
   useEffect(() => {
     setLoading(true);
-    Promise.all([loadBills(), loadScooters()]).finally(() => setLoading(false));
-  }, [loadBills, loadScooters]);
+    loadBills().finally(() => setLoading(false));
+  }, [loadBills]);
+
+  useEffect(() => { loadScooters(); }, [loadScooters]);
 
   useEffect(() => {
     const refresh = () => loadBills();
@@ -473,6 +474,7 @@ export default function Billing({ business }) {
     if (!node) return showToast("Invoice element not found", "error");
     showToast("Generating PDF…");
     try {
+      const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([import("jspdf"), import("html2canvas")]);
       const canvas = await html2canvas(node, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
 
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });

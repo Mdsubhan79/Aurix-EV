@@ -1,20 +1,15 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import axios from "axios";
 import { io } from "socket.io-client";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import "./responsive.css";
 import Billing from "./Billing";
 import {
   Zap, LayoutDashboard, Bike, Receipt, TrendingUp, Wallet, Users, Settings as SettingsIcon,
-  Plus, X, Trash2, Edit2, Search, Download, Share2, ChevronRight, IndianRupee, MapPin,
-Image as ImageIcon,
-Upload,
-Check,
-ArrowUpRight,
-ArrowDownRight,
-LogOut,
-Eye,
-EyeOff,
-MoreHorizontal
+  Plus, X, Trash2, Edit2, Search, Download, Share2, ChevronRight, ChevronDown, IndianRupee, MapPin,
+  Image as ImageIcon, Upload, Check, ArrowUpRight, ArrowDownRight, LogOut, Eye, EyeOff,
+  MoreHorizontal, Wrench, Boxes, MessageCircle, FileText
 } from "lucide-react";
 
 /* =========================================================================
@@ -33,7 +28,7 @@ api.interceptors.request.use((config) => {
 export const socket = io(SOCKET_URL, { autoConnect: false });
 
 /* =========================================================================
-   1. GLOBAL STYLE INJECTION 
+   1. GLOBAL STYLE INJECTION
 ========================================================================= */
 function GlobalStyles() {
   useEffect(() => {
@@ -62,54 +57,58 @@ function GlobalStyles() {
 }
 
 /* =========================================================================
-   2. UTIL HELPERS 
+   2. UTIL HELPERS
 ========================================================================= */
-
 export const inr = (n) => "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
 
 export const fmtDate = (d) =>
-  new Date(d).toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric"
-  });
+  new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 
 export const todayISO = () => new Date().toISOString().slice(0, 10);
 
-export const RANGE_LABEL = {
-  today: "Today",
-  week: "This Week",
-  month: "This Month",
-  year: "This Year"
+/* ---- Year / Month period filter (replaces Today / Week / Month / Year tabs) ---- */
+export const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+// month: 0 = whole year, 1-12 = a specific month
+export const defaultPeriod = () => {
+  const d = new Date();
+  return { year: d.getFullYear(), month: d.getMonth() + 1 };
 };
+export const periodParams = (p) => (p.month ? { year: p.year, month: p.month } : { year: p.year });
+export const periodLabel = (p) => (p.month ? `${MONTHS[p.month - 1]} ${p.year}` : `Full Year ${p.year}`);
 
+export function PeriodPicker({ period, setPeriod }) {
+  const cy = new Date().getFullYear();
+  const years = [];
+  for (let y = cy + 1; y >= cy - 6; y--) years.push(y);
+  const sel = { ...S.input, width: "auto", minWidth: 120, cursor: "pointer", fontWeight: 600 };
+  return (
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+      <select value={period.year} onChange={(e) => setPeriod((p) => ({ ...p, year: Number(e.target.value) }))} style={sel}>
+        {years.map((y) => <option key={y} value={y}>{y}</option>)}
+      </select>
+      <select value={period.month} onChange={(e) => setPeriod((p) => ({ ...p, month: Number(e.target.value) }))} style={sel}>
+        <option value={0}>All months</option>
+        {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+      </select>
+    </div>
+  );
+}
 
-// ============================================================
 /* =========================================================================
    GOOGLE SHEET COMPLETE REPORT EXPORT
 ======================================================================== */
-
 export const exportCompleteReport = async () => {
   try {
     const response = await api.post("/reports/export-complete");
-
-    alert(
-      response.data?.message ||
-      "Complete report exported successfully to Google Sheets!"
-    );
-
+    alert(response.data?.message || "Complete report exported successfully to Google Sheets!");
     return response.data;
   } catch (error) {
-    console.error(
-      "Google Sheet export failed:",
-      error.response?.data || error
-    );
-
-    alert(
-      error.response?.data?.message ||
-      "Unable to export complete report to Google Sheets."
-    );
-
+    console.error("Google Sheet export failed:", error.response?.data || error);
+    alert(error.response?.data?.message || "Unable to export complete report to Google Sheets.");
     throw error;
   }
 };
@@ -179,14 +178,7 @@ export default function App() {
       {stage === "onboarding" && <OnboardingScreen onDone={handleOnboarded} />}
       {stage === "loading" && <LoadingScreen business={business} />}
       {stage === "app" && (
-        <AppShell
-          owner={owner}
-          business={business}
-          setBusiness={setBusiness}
-          tab={tab}
-          setTab={setTab}
-          onLogout={logout}
-        />
+        <AppShell owner={owner} business={business} setBusiness={setBusiness} tab={tab} setTab={setTab} onLogout={logout} />
       )}
     </>
   );
@@ -384,6 +376,7 @@ const NAV = [
   { id: "sales", label: "Sales", icon: TrendingUp },
   { id: "expenses", label: "Expenses", icon: Wallet },
   { id: "partners", label: "Partners", icon: Users },
+  { id: "spares", label: "Spare Parts", icon: Wrench },
   { id: "settings", label: "Settings", icon: SettingsIcon },
 ];
 
@@ -403,14 +396,11 @@ function AppShell({ owner, business, setBusiness, tab, setTab, onLogout }) {
         <div style={{ flex: 1, padding: isMobile ? "16px 14px 90px" : "24px 32px 40px", overflowY: "auto" }}>
           {tab === "dashboard" && <Dashboard setTab={setTab} />}
           {tab === "catalogue" && <Catalogue />}
-          {tab === "billing" && (
-  <Billing
-    business={business}
-  />
-)}
+          {tab === "billing" && <Billing business={business} />}
           {tab === "sales" && <Sales />}
-          {tab === "expenses" && <Expenses />}
+          {tab === "expenses" && <Expenses business={business} />}
           {tab === "partners" && <Partners business={business} />}
+          {tab === "spares" && <SpareParts />}
           {tab === "settings" && <SettingsTab business={business} setBusiness={setBusiness} />}
         </div>
       </div>
@@ -450,14 +440,9 @@ function Sidebar({ tab, setTab, business, onLogout }) {
 
 function BottomNav({ tab, setTab }) {
   const [showMore, setShowMore] = useState(false);
-
-  const mainNav = NAV.filter((n) =>
-    ["dashboard", "catalogue", "billing", "sales", "expenses"].includes(n.id)
-  );
-
-  const moreNav = NAV.filter((n) =>
-    ["partners", "settings"].includes(n.id)
-  );
+  const mainNav = NAV.filter((n) => ["dashboard", "catalogue", "billing", "sales", "expenses"].includes(n.id));
+  const moreNav = NAV.filter((n) => ["partners", "spares", "settings"].includes(n.id));
+  const moreActive = showMore || ["partners", "spares", "settings"].includes(tab);
 
   const selectTab = (id) => {
     setTab(id);
@@ -468,57 +453,17 @@ function BottomNav({ tab, setTab }) {
     <>
       {showMore && (
         <>
-          <div
-            onClick={() => setShowMore(false)}
-            style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(0,0,0,0.45)",
-              zIndex: 98,
-            }}
-          />
-
-          <div
-            style={{
-              position: "fixed",
-              left: 12,
-              right: 12,
-              bottom: 78,
-              background: "#1B1F27",
-              border: "1px solid #2A3140",
-              borderRadius: 16,
-              padding: 10,
-              zIndex: 99,
-              boxShadow: "0 -8px 30px rgba(0,0,0,0.35)",
-            }}
-          >
+          <div onClick={() => setShowMore(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 98 }} />
+          <div style={{ position: "fixed", left: 12, right: 12, bottom: 78, background: "#1B1F27", border: "1px solid #2A3140", borderRadius: 16, padding: 10, zIndex: 99, boxShadow: "0 -8px 30px rgba(0,0,0,0.35)" }}>
             {moreNav.map((n) => {
               const Icon = n.icon;
-
               return (
-                <button
-                  key={n.id}
-                  onClick={() => selectTab(n.id)}
-                  style={{
-                    width: "100%",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    padding: "15px 14px",
-                    background:
-                      tab === n.id ? "#252C38" : "transparent",
-                    border: "none",
-                    borderRadius: 10,
-                    color:
-                      tab === n.id ? "#C4F135" : "#D6DAE2",
-                    cursor: "pointer",
-                    fontSize: 14,
-                    fontWeight: 600,
-                    textAlign: "left",
-                  }}
-                >
-                  <Icon size={19} />
-                  {n.label}
+                <button key={n.id} onClick={() => selectTab(n.id)} style={{
+                  width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "15px 14px",
+                  background: tab === n.id ? "#252C38" : "transparent", border: "none", borderRadius: 10,
+                  color: tab === n.id ? "#C4F135" : "#D6DAE2", cursor: "pointer", fontSize: 14, fontWeight: 600, textAlign: "left",
+                }}>
+                  <Icon size={19} /> {n.label}
                 </button>
               );
             })}
@@ -526,81 +471,27 @@ function BottomNav({ tab, setTab }) {
         </>
       )}
 
-      <div
-        style={{
-          position: "fixed",
-          bottom: 0,
-          left: 0,
-          right: 0,
-          background: "#171B23",
-          borderTop: "1px solid #232833",
-          display: "flex",
-          justifyContent: "space-around",
-          padding:
-            "8px 2px calc(env(safe-area-inset-bottom,0px) + 8px)",
-          zIndex: 100,
-        }}
-      >
+      <div style={{
+        position: "fixed", bottom: 0, left: 0, right: 0, background: "#171B23", borderTop: "1px solid #232833",
+        display: "flex", justifyContent: "space-around", padding: "8px 2px calc(env(safe-area-inset-bottom,0px) + 8px)", zIndex: 100,
+      }}>
         {mainNav.map((n) => {
           const Icon = n.icon;
           const active = tab === n.id;
-
           return (
-            <button
-              key={n.id}
-              onClick={() => selectTab(n.id)}
-              style={{
-                flex: 1,
-                minWidth: 0,
-                background: "none",
-                border: "none",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: 4,
-                color: active ? "#C4F135" : "#5A616F",
-                fontSize: 10,
-                padding: "4px 2px",
-                cursor: "pointer",
-              }}
-            >
+            <button key={n.id} onClick={() => selectTab(n.id)} style={{
+              flex: 1, minWidth: 0, background: "none", border: "none", display: "flex", flexDirection: "column",
+              alignItems: "center", gap: 4, color: active ? "#C4F135" : "#5A616F", fontSize: 10, padding: "4px 2px", cursor: "pointer",
+            }}>
               <Icon size={18} />
-              <span
-                style={{
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  maxWidth: "100%",
-                }}
-              >
-                {n.label}
-              </span>
+              <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{n.label}</span>
             </button>
           );
         })}
-
-        <button
-          onClick={() => setShowMore((v) => !v)}
-          style={{
-            flex: 1,
-            minWidth: 0,
-            background: "none",
-            border: "none",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: 4,
-            color:
-              showMore ||
-              tab === "partners" ||
-              tab === "settings"
-                ? "#C4F135"
-                : "#5A616F",
-            fontSize: 10,
-            padding: "4px 2px",
-            cursor: "pointer",
-          }}
-        >
+        <button onClick={() => setShowMore((v) => !v)} style={{
+          flex: 1, minWidth: 0, background: "none", border: "none", display: "flex", flexDirection: "column",
+          alignItems: "center", gap: 4, color: moreActive ? "#C4F135" : "#5A616F", fontSize: 10, padding: "4px 2px", cursor: "pointer",
+        }}>
           <MoreHorizontal size={20} />
           <span>More</span>
         </button>
@@ -617,87 +508,52 @@ function TopBar({ business, tab, owner, onLogout, isMobile }) {
         <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 21 }}>{label}</div>
         {business?.tagline ? <div style={{ color: "#5A616F", fontSize: 12, marginTop: 2 }}>{business.tagline}</div> : null}
       </div>
-      {isMobile && (
-        <button onClick={onLogout} style={S.iconBtn}><LogOut size={15} /></button>
-      )}
+      {isMobile && <button onClick={onLogout} style={S.iconBtn}><LogOut size={15} /></button>}
     </div>
   );
 }
 
 /* =========================================================================
-   8. DASHBOARD 
+   8. DASHBOARD
 ========================================================================= */
 function Dashboard({ setTab }) {
-  const [range, setRange] = useState("year");
+  const [period, setPeriod] = useState(defaultPeriod());
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async () => {
-  setLoading(true);
-
-  try {
-    const res = await api.get(`/dashboard/summary?range=${range}`);
-    console.log("DASHBOARD DATA:", res.data);
-    setSummary(res.data);
-  } catch (error) {
-    console.error("DASHBOARD ERROR:", error);
-    console.error("STATUS:", error.response?.status);
-    console.error("DATA:", error.response?.data);
-
-    setSummary({
-      totalSales: 0,
-      grossProfit: 0,
-      totalExpenses: 0,
-      netProfit: 0,
-      billCount: 0,
-      locations: [],
-      recentBills: [],
-    });
-  } finally {
-    setLoading(false);
-  }
-}, [range]);
+    setLoading(true);
+    try {
+      const res = await api.get("/dashboard/summary", { params: periodParams(period) });
+      setSummary(res.data);
+    } catch (error) {
+      console.error("DASHBOARD ERROR:", error.response?.status, error.response?.data || error);
+      setSummary({ totalSales: 0, grossProfit: 0, totalExpenses: 0, netProfit: 0, billCount: 0, locations: [], recentBills: [] });
+    } finally {
+      setLoading(false);
+    }
+  }, [period]);
 
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
     const refresh = () => load();
-    socket.on("bill:created", refresh);
-    socket.on("bill:updated", refresh);
-    socket.on("bill:deleted", refresh);
-    socket.on("expense:created", refresh);
-    socket.on("expense:deleted", refresh);
-    return () => {
-      socket.off("bill:created", refresh);
-      socket.off("bill:updated", refresh);
-      socket.off("bill:deleted", refresh);
-      socket.off("expense:created", refresh);
-      socket.off("expense:deleted", refresh);
-    };
+    const events = ["bill:created", "bill:updated", "bill:deleted", "expense:created", "expense:deleted"];
+    events.forEach((ev) => socket.on(ev, refresh));
+    return () => events.forEach((ev) => socket.off(ev, refresh));
   }, [load]);
-
 
   const handleExport = async () => {
     setExporting(true);
-    try {
-      await exportCompleteReport();
-    } catch {
-      // exportCompleteReport already alerts on failure
-    } finally {
-      setExporting(false);
-    }
+    try { await exportCompleteReport(); } catch { /* alert already shown */ } finally { setExporting(false); }
   };
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 4 }}>
-        <RangeTabs range={range} setRange={setRange} />
-        <button
-          onClick={handleExport}
-          disabled={exporting}
-          style={{ ...S.primaryBtn, opacity: exporting ? 0.6 : 1 }}
-        >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 4 }}>
+        <PeriodPicker period={period} setPeriod={setPeriod} />
+        <button onClick={handleExport} disabled={exporting} style={{ ...S.primaryBtn, opacity: exporting ? 0.6 : 1 }}>
           <Download size={16} />
           {exporting ? "Exporting…" : "Export to Google Sheet"}
         </button>
@@ -705,7 +561,7 @@ function Dashboard({ setTab }) {
       {loading || !summary ? <Empty text="Loading…" /> : (
         <>
           <div style={S.statGrid}>
-            <StatCard icon={IndianRupee} label={`Sales · ${RANGE_LABEL[range]}`} value={inr(summary.totalSales)} accent="#C4F135" sub={`${summary.billCount} bills`} />
+            <StatCard icon={IndianRupee} label={`Sales · ${periodLabel(period)}`} value={inr(summary.totalSales)} accent="#C4F135" sub={`${summary.billCount} bills`} />
             <StatCard icon={TrendingUp} label="Gross Profit" value={inr(summary.grossProfit)} accent="#3D8BFD" />
             <StatCard icon={ArrowDownRight} label="Expenses" value={inr(summary.totalExpenses)} accent="#FF6B6B" />
             <StatCard icon={summary.netProfit >= 0 ? ArrowUpRight : ArrowDownRight} label="Net Profit" value={inr(summary.netProfit)} accent={summary.netProfit >= 0 ? "#C4F135" : "#FF6B6B"} />
@@ -757,20 +613,6 @@ function QuickAction({ icon: Icon, label, onClick }) {
   );
 }
 
-export function RangeTabs({ range, setRange }) {
-  return (
-    <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
-      {Object.keys(RANGE_LABEL).map((r) => (
-        <button key={r} onClick={() => setRange(r)} style={{
-          padding: "7px 14px", borderRadius: 20, border: "1px solid " + (range === r ? "#C4F135" : "#2A2F3A"),
-          background: range === r ? "rgba(196,241,53,0.1)" : "transparent", color: range === r ? "#C4F135" : "#8B93A1",
-          fontSize: 12.5, fontWeight: 600, cursor: "pointer"
-        }}>{RANGE_LABEL[r]}</button>
-      ))}
-    </div>
-  );
-}
-
 export function StatCard({ icon: Icon, label, value, accent, sub }) {
   return (
     <div style={S.card}>
@@ -789,17 +631,10 @@ export function Empty({ text }) {
 }
 
 /* =========================================================================
-   9. CATALOGUE 
+   9. CATALOGUE
 ========================================================================= */
 function emptyScooter() {
-  return {
-    name: "",
-    chassisNo: "",
-    motorNo: "",
-    features: "",
-    warranty: "",
-    scooterPrice: "",
-  };
+  return { name: "", chassisNo: "", motorNo: "", features: "", warranty: "", scooterPrice: "" };
 }
 
 function Catalogue() {
@@ -810,29 +645,20 @@ function Catalogue() {
 
   const load = useCallback(() => {
     setLoading(true);
-
     api
-      .get("/scooters", {
-        params: query ? { q: query } : {},
-      })
+      .get("/scooters", { params: query ? { q: query } : {} })
       .then((res) => setScooters(res.data))
-      .catch((err) => {
-        console.error("Failed to load scooters:", err);
-      })
+      .catch((err) => console.error("Failed to load scooters:", err))
       .finally(() => setLoading(false));
   }, [query]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
     const refresh = () => load();
-
     socket.on("scooter:created", refresh);
     socket.on("scooter:updated", refresh);
     socket.on("scooter:deleted", refresh);
-
     return () => {
       socket.off("scooter:created", refresh);
       socket.off("scooter:updated", refresh);
@@ -840,134 +666,51 @@ function Catalogue() {
     };
   }, [load]);
 
-  const openNew = () => {
-    setEditing({
-      id: null,
-      data: emptyScooter(),
-      imageFile: null,
-      imagePreview: "",
-    });
-  };
-
-  const openEdit = (s) => {
-    setEditing({
-      id: s._id,
-      data: {
-        ...emptyScooter(),
-        ...s,
-      },
-      imageFile: null,
-      imagePreview: s.imageUrl || "",
-    });
-  };
+  const openNew = () => setEditing({ id: null, data: emptyScooter(), imageFile: null, imagePreview: "" });
+  const openEdit = (s) => setEditing({ id: s._id, data: { ...emptyScooter(), ...s }, imageFile: null, imagePreview: s.imageUrl || "" });
 
   const save = async () => {
     try {
       if (!editing) return;
-
       const { id, data, imageFile } = editing;
-
       let saved;
-
-      if (id) {
-        saved = (
-          await api.put(`/scooters/${id}`, data)
-        ).data;
-      } else {
-        saved = (
-          await api.post("/scooters", data)
-        ).data;
-      }
+      if (id) saved = (await api.put(`/scooters/${id}`, data)).data;
+      else saved = (await api.post("/scooters", data)).data;
 
       if (imageFile) {
         const fd = new FormData();
-
         fd.append("image", imageFile);
-
-        await api.post(
-          `/scooters/${saved._id}/image`,
-          fd,
-          {
-            headers: {
-              "Content-Type": "multipart/form-data",
-            },
-          }
-        );
+        await api.post(`/scooters/${saved._id}/image`, fd, { headers: { "Content-Type": "multipart/form-data" } });
       }
-
       setEditing(null);
-
       load();
     } catch (err) {
       console.error("Failed to save scooter:", err);
-
-      alert(
-        err?.response?.data?.message ||
-          "Failed to save scooter."
-      );
+      alert(err?.response?.data?.message || "Failed to save scooter.");
     }
   };
 
   const remove = async (id) => {
-    const ok = window.confirm(
-      "Are you sure you want to delete this scooter?"
-    );
-
-    if (!ok) return;
-
+    if (!window.confirm("Are you sure you want to delete this scooter?")) return;
     try {
       await api.delete(`/scooters/${id}`);
-
       load();
     } catch (err) {
       console.error("Failed to delete scooter:", err);
-
-      alert(
-        err?.response?.data?.message ||
-          "Failed to delete scooter."
-      );
+      alert(err?.response?.data?.message || "Failed to delete scooter.");
     }
   };
 
+  const mono = { color: "#5A616F", fontSize: 11, fontFamily: "'JetBrains Mono',monospace" };
+
   return (
     <div>
-      <div
-        style={{
-          display: "flex",
-          gap: 10,
-          marginBottom: 16,
-          flexWrap: "wrap",
-        }}
-      >
-        <div
-          style={{
-            ...S.searchBox,
-            flex: 1,
-            minWidth: 180,
-          }}
-        >
-          <Search
-            size={15}
-            color="#5A616F"
-          />
-
-          <input
-            value={query}
-            onChange={(e) =>
-              setQuery(e.target.value)
-            }
-            placeholder="Search name, chassis, motor no."
-            style={S.searchInput}
-          />
+      <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+        <div style={{ ...S.searchBox, flex: 1, minWidth: 180 }}>
+          <Search size={15} color="#5A616F" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name, chassis, motor no." style={S.searchInput} />
         </div>
-
-        <button
-          onClick={openNew}
-          style={S.primaryBtn}
-        >
-          <Plus size={16} />
-          Add scooter
-        </button>
+        <button onClick={openNew} style={S.primaryBtn}><Plus size={16} /> Add scooter</button>
       </div>
 
       {loading ? (
@@ -975,903 +718,578 @@ function Catalogue() {
       ) : scooters.length === 0 ? (
         <Empty text="No scooters in catalogue yet." />
       ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns:
-              "repeat(auto-fill,minmax(260px,1fr))",
-            gap: 14,
-          }}
-        >
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 14 }}>
           {scooters.map((s) => (
-            <div
-              key={s._id}
-              style={S.card}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  gap: 12,
-                }}
-              >
-                <div
-                  style={{
-                    width: 64,
-                    height: 64,
-                    borderRadius: 10,
-                    background: "#1E2430",
-                    flexShrink: 0,
-                    overflow: "hidden",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {s.imageUrl ? (
-                    <img
-                      src={s.imageUrl}
-                      alt={s.name}
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                      }}
-                    />
-                  ) : (
-                    <Bike
-                      size={22}
-                      color="#5A616F"
-                    />
-                  )}
+            <div key={s._id} style={S.card}>
+              <div style={{ display: "flex", gap: 12 }}>
+                <div style={{ width: 64, height: 64, borderRadius: 10, background: "#1E2430", flexShrink: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {s.imageUrl ? <img src={s.imageUrl} alt={s.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Bike size={22} color="#5A616F" />}
                 </div>
-
-                <div
-                  style={{
-                    flex: 1,
-                    minWidth: 0,
-                  }}
-                >
-                  <div
-                    style={{
-                      fontWeight: 700,
-                      fontSize: 15,
-                    }}
-                  >
-                    {s.name}
-                  </div>
-
-                  <div
-                    style={{
-                      color: "#5A616F",
-                      fontSize: 11,
-                      fontFamily:
-                        "'JetBrains Mono',monospace",
-                    }}
-                  >
-                    Chassis{" "}
-                    {s.chassisNo || "—"}
-                  </div>
-
-                  <div
-                    style={{
-                      color: "#5A616F",
-                      fontSize: 11,
-                      fontFamily:
-                        "'JetBrains Mono',monospace",
-                    }}
-                  >
-                    Motor{" "}
-                    {s.motorNo || "—"}
-                  </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>{s.name}</div>
+                  <div style={mono}>Chassis {s.chassisNo || "—"}</div>
+                  <div style={mono}>Motor {s.motorNo || "—"}</div>
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent:
-                    "space-between",
-                  marginTop: 12,
-                  fontSize: 12.5,
-                  gap: 10,
-                  flexWrap: "wrap",
-                }}
-              >
-                <div
-                  style={{
-                    color: "#8B93A1",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  Warranty:{" "}
-                  <b
-                    style={{
-                      color: "#F2F3F0",
-                    }}
-                  >
-                    {s.warranty || "—"}
-                  </b>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, fontSize: 12.5, gap: 10, flexWrap: "wrap" }}>
+                <div style={{ color: "#8B93A1", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  Warranty: <b style={{ color: "#F2F3F0" }}>{s.warranty || "—"}</b>
                 </div>
-
                 {Number(s.scooterPrice) > 0 && (
-                  <div
-                    style={{
-                      color: "#8B93A1",
-                      flexShrink: 0,
-                    }}
-                  >
-                    Price:{" "}
-                    <b
-                      style={{
-                        color: "#C4F135",
-                      }}
-                    >
-                      {inr(s.scooterPrice)}
-                    </b>
+                  <div style={{ color: "#8B93A1", flexShrink: 0 }}>
+                    Price: <b style={{ color: "#C4F135" }}>{inr(s.scooterPrice)}</b>
                   </div>
                 )}
               </div>
 
-              <div
-                style={{
-                  display: "flex",
-                  gap: 8,
-                  marginTop: 12,
-                }}
-              >
-                <button
-                  onClick={() => openEdit(s)}
-                  style={S.ghostBtnSm}
-                >
-                  <Edit2 size={13} />
-                  Edit
-                </button>
-
-                <button
-                  onClick={() => remove(s._id)}
-                  style={{
-                    ...S.ghostBtnSm,
-                    color: "#FF6B6B",
-                  }}
-                >
-                  <Trash2 size={13} />
-                  Delete
-                </button>
+              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                <button onClick={() => openEdit(s)} style={S.ghostBtnSm}><Edit2 size={13} /> Edit</button>
+                <button onClick={() => remove(s._id)} style={{ ...S.ghostBtnSm, color: "#FF6B6B" }}><Trash2 size={13} /> Delete</button>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {editing && (
-        <ScooterModal
-          editing={editing}
-          setEditing={setEditing}
-          onClose={() => setEditing(null)}
-          onSave={save}
-        />
-      )}
+      {editing && <ScooterModal editing={editing} setEditing={setEditing} onClose={() => setEditing(null)} onSave={save} />}
     </div>
   );
 }
 
 export function Modal({ title, children, onClose }) {
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 99999,
-
-        background: "rgba(5, 8, 12, 0.75)",
-        backdropFilter: "blur(4px)",
-
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-
-        padding: 12,
-        paddingBottom: "calc(12px + env(safe-area-inset-bottom))",
-
-        overflow: "hidden",
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 460,
-
-          maxHeight:
-            "calc(100dvh - 24px - env(safe-area-inset-bottom))",
-
-          background: "#202631",
-          border: "1px solid #303846",
-          borderRadius: 18,
-
-          display: "flex",
-          flexDirection: "column",
-
-          overflow: "hidden",
-
-          boxShadow:
-            "0 20px 60px rgba(0,0,0,0.55)",
-
-          position: "relative",
-          zIndex: 100000,
-        }}
-      >
-        {/* HEADER */}
-        <div
-          style={{
-            flexShrink: 0,
-
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-
-            padding: "18px 20px 14px 20px",
-
-            borderBottom:
-              "1px solid #303846",
-          }}
-        >
-          <h2
-            style={{
-              margin: 0,
-              fontSize: 17,
-              fontWeight: 700,
-              color: "#F2F3F0",
-            }}
-          >
-            {title}
-          </h2>
-
-          <button
-            onClick={onClose}
-            style={{
-              width: 36,
-              height: 36,
-
-              border: "none",
-              borderRadius: 10,
-
-              background: "#28303D",
-              color: "#9CA6B5",
-
-              cursor: "pointer",
-
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 99999, background: "rgba(5, 8, 12, 0.75)", backdropFilter: "blur(4px)",
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 12,
+      paddingBottom: "calc(12px + env(safe-area-inset-bottom))", overflow: "hidden",
+    }}>
+      <div style={{
+        width: "100%", maxWidth: 460, maxHeight: "calc(100dvh - 24px - env(safe-area-inset-bottom))",
+        background: "#202631", border: "1px solid #303846", borderRadius: 18, display: "flex", flexDirection: "column",
+        overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,0.55)", position: "relative", zIndex: 100000,
+      }}>
+        <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 20px 14px 20px", borderBottom: "1px solid #303846" }}>
+          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "#F2F3F0" }}>{title}</h2>
+          <button onClick={onClose} style={{ width: 36, height: 36, border: "none", borderRadius: 10, background: "#28303D", color: "#9CA6B5", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <X size={19} />
           </button>
         </div>
-
-        {/* SCROLLABLE CONTENT */}
-        <div
-          style={{
-            flex: 1,
-            minHeight: 0,
-
-            overflowY: "auto",
-            overflowX: "hidden",
-
-            padding: "16px 20px 30px 20px",
-
-            WebkitOverflowScrolling: "touch",
-          }}
-        >
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", padding: "16px 20px 30px 20px", WebkitOverflowScrolling: "touch" }}>
           {children}
         </div>
       </div>
     </div>
   );
 }
+
 /* =========================================================================
-   11. SALES
+   11. SALES — grouped by INV / SRV / RPR with Actual + Margin totals
 ========================================================================= */
+const SALE_GROUPS = [
+  { type: "sale", code: "INV", title: "Sales Invoices" },
+  { type: "service", code: "SRV", title: "Service Bills" },
+  { type: "repair", code: "RPR", title: "Repair Bills" },
+];
+const itemQty = (it) => Number(it.qty || 1);
+const itemAmount = (it) => Number(it.sellingPrice || 0) * itemQty(it);
+const itemActual = (it) => Number(it.actualPrice || 0) * itemQty(it);
+const itemMargin = (it) => itemAmount(it) - itemActual(it);
+const billActual = (b) => (b.items || []).reduce((s, it) => s + itemActual(it), 0);
+const billMargin = (b) => (b.items || []).reduce((s, it) => s + itemMargin(it), 0);
+
+function MiniStat({ label, value, color }) {
+  return (
+    <div style={{ background: "#12151A", border: "1px solid #232833", borderRadius: 10, padding: "8px 10px", minWidth: 0 }}>
+      <div style={{ color: "#8B93A1", fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.4 }}>{label}</div>
+      <div style={{ fontFamily: "'JetBrains Mono',monospace", fontWeight: 700, fontSize: 13.5, color, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</div>
+    </div>
+  );
+}
+
 function Sales() {
-  const [range, setRange] = useState("year");
+  const [period, setPeriod] = useState(defaultPeriod());
   const [bills, setBills] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [closed, setClosed] = useState({});
 
   const load = useCallback(() => {
     setLoading(true);
-    api.get(`/bills?range=${range}`)
+    api.get("/bills", { params: periodParams(period) })
       .then((res) => setBills(Array.isArray(res.data) ? res.data : []))
+      .catch(() => setBills([]))
       .finally(() => setLoading(false));
-  }, [range]);
+  }, [period]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     const refresh = () => load();
-    socket.on("bill:created", refresh);
-    socket.on("bill:updated", refresh);
-    socket.on("bill:deleted", refresh);
-    return () => { socket.off("bill:created", refresh); socket.off("bill:updated", refresh); socket.off("bill:deleted", refresh); };
+    const events = ["bill:created", "bill:updated", "bill:deleted"];
+    events.forEach((ev) => socket.on(ev, refresh));
+    return () => events.forEach((ev) => socket.off(ev, refresh));
   }, [load]);
 
-  const itemMargin = (it) => (Number(it.sellingPrice || 0) - Number(it.actualPrice || 0)) * Number(it.qty || 1);
-  const itemAmount = (it) => Number(it.sellingPrice || 0) * Number(it.qty || 1);
+  const groups = useMemo(
+    () => SALE_GROUPS.map((g) => {
+      const list = bills.filter((b) => (b.type || "sale") === g.type);
+      return {
+        ...g,
+        bills: list,
+        sales: list.reduce((s, b) => s + Number(b.total || 0), 0),
+        actual: list.reduce((s, b) => s + billActual(b), 0),
+        margin: list.reduce((s, b) => s + billMargin(b), 0),
+      };
+    }),
+    [bills]
+  );
 
-  const total = bills.reduce((s, b) => s + Number(b.total || 0), 0);
-  const profit = bills.reduce((s, b) => s + (b.items || []).reduce((x, it) => x + itemMargin(it), 0), 0);
+  const totalSales = groups.reduce((s, g) => s + g.sales, 0);
+  const totalActual = groups.reduce((s, g) => s + g.actual, 0);
+  const totalMargin = groups.reduce((s, g) => s + g.margin, 0);
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
-        <RangeTabs range={range} setRange={setRange} />
-      </div>
+      <PeriodPicker period={period} setPeriod={setPeriod} />
+
       <div style={S.statGrid}>
-        <StatCard icon={IndianRupee} label="Total sales" value={inr(total)} accent="#C4F135" sub={`${bills.length} bills`} />
-        <StatCard icon={TrendingUp} label="Total profit margin" value={inr(profit)} accent="#3D8BFD" />
+        <StatCard icon={IndianRupee} label={`Total sales · ${periodLabel(period)}`} value={inr(totalSales)} accent="#C4F135" sub={`${bills.length} bills`} />
+        <StatCard icon={Wallet} label="Total actual amount" value={inr(totalActual)} accent="#FFB020" />
+        <StatCard icon={TrendingUp} label="Total margin" value={inr(totalMargin)} accent="#3D8BFD" />
       </div>
 
-      <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-        {loading ? <Empty text="Loading…" /> : bills.length === 0 ? <Empty text="No sales in this period." /> : bills.map((b) => (
-          <div key={b._id} style={S.card}>
-            {/* Bill header */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 14.5 }}>{b.customerName || "Walk-in"}</div>
-                <div style={{ color: "#5A616F", fontSize: 11.5, marginTop: 2 }}>
-                  {fmtDate(b.date)} · {b.location || "—"} · <span style={{ textTransform: "capitalize" }}>{b.type}</span>
-                  {b.invoiceNumber ? ` · ${b.invoiceNumber}` : ""}
+      {loading ? <Empty text="Loading…" /> : bills.length === 0 ? <Empty text="No sales in this period." /> : (
+        <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 16 }}>
+          {groups.map((g) => (
+            <div key={g.type}>
+              {/* Group header: actual + margin totals on top of each INV / SRV / RPR */}
+              <button
+                onClick={() => setClosed((c) => ({ ...c, [g.type]: !c[g.type] }))}
+                style={{ ...S.card, width: "100%", cursor: "pointer", textAlign: "left", color: "inherit", padding: "14px 16px", borderColor: "#2F3A1A" }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ background: "rgba(196,241,53,0.12)", color: "#C4F135", fontWeight: 800, fontSize: 12, padding: "4px 10px", borderRadius: 8, letterSpacing: 0.5 }}>{g.code}</span>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 14.5 }}>{g.title}</div>
+                      <div style={{ color: "#5A616F", fontSize: 11.5 }}>{g.bills.length} {g.bills.length === 1 ? "bill" : "bills"}</div>
+                    </div>
+                  </div>
+                  <ChevronDown size={18} color="#8B93A1" style={{ transform: closed[g.type] ? "rotate(-90deg)" : "none", transition: "transform .15s" }} />
                 </div>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontFamily: "'JetBrains Mono',monospace", fontWeight: 700, color: "#C4F135", fontSize: 15 }}>{inr(b.total)}</div>
-                <div style={{ color: "#5A616F", fontSize: 11 }}>{(b.paymentMode || "Cash")}</div>
-              </div>
-            </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginTop: 12 }}>
+                  <MiniStat label="Sales" value={inr(g.sales)} color="#C4F135" />
+                  <MiniStat label="Actual total" value={inr(g.actual)} color="#FFB020" />
+                  <MiniStat label="Margin total" value={inr(g.margin)} color="#3D8BFD" />
+                </div>
+              </button>
 
-            {/* Full catalogue/item detail table */}
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 760 }}>
-                <thead>
-                  <tr style={{ color: "#8B93A1", textAlign: "left", borderTop: "1px solid #232833", borderBottom: "1px solid #232833" }}>
-                    <th style={S.th}>Item</th>
-                    <th style={S.th}>Chassis No</th>
-                    <th style={S.th}>Motor No</th>
-                    <th style={S.th}>Battery</th>
-                    <th style={S.th}>Warranty</th>
-                    <th style={{ ...S.th, textAlign: "right" }}>Qty</th>
-                    <th style={{ ...S.th, textAlign: "right" }}>Scooter Price</th>
-                    <th style={{ ...S.th, textAlign: "right" }}>Actual</th>
-                    <th style={{ ...S.th, textAlign: "right" }}>Selling</th>
-                    <th style={{ ...S.th, textAlign: "right" }}>Battery ₹</th>
-                    <th style={{ ...S.th, textAlign: "right" }}>Amount</th>
-                    <th style={{ ...S.th, textAlign: "right" }}>Margin</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(b.items || []).length === 0 ? (
-                    <tr><td style={S.td} colSpan={12}>No item details on this bill.</td></tr>
-                  ) : (b.items || []).map((it, i) => (
-                    <tr key={i} style={{ borderBottom: "1px solid #1E2430" }}>
-                      <td style={S.td}>
-                        <div style={{ fontWeight: 600 }}>{it.name}</div>
-                        {(it.model || it.color) && (
-                          <div style={{ color: "#5A616F", fontSize: 10.5 }}>
-                            {[it.model, it.color].filter(Boolean).join(" · ")}
+              {!closed[g.type] && (
+                <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+                  {g.bills.length === 0 ? <Empty text={`No ${g.code} bills in this period.`} /> : g.bills.map((b) => (
+                    <div key={b._id} style={S.card}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: 14.5 }}>{b.customerName || "Walk-in"}</div>
+                          <div style={{ color: "#5A616F", fontSize: 11.5, marginTop: 2 }}>
+                            {fmtDate(b.date)} · {b.location || "—"}{b.invoiceNumber ? ` · ${b.invoiceNumber}` : ""} · {b.paymentMode || "Cash"}
                           </div>
-                        )}
-                      </td>
-                      <td style={{ ...S.td, fontFamily: "'JetBrains Mono',monospace" }}>{it.chassisNo || "—"}</td>
-                      <td style={{ ...S.td, fontFamily: "'JetBrains Mono',monospace" }}>{it.motorNo || "—"}</td>
-                      <td style={S.td}>{it.batteryType || "—"}</td>
-                      <td style={S.td}>{it.warranty || "—"}</td>
-                      <td style={{ ...S.td, textAlign: "right" }}>{it.qty}</td>
-                      <td style={{ ...S.td, textAlign: "right" }}>{it.scooterPrice ? inr(it.scooterPrice) : "—"}</td>
-                      <td style={{ ...S.td, textAlign: "right" }}>{inr(it.actualPrice)}</td>
-                      <td style={{ ...S.td, textAlign: "right" }}>{inr(it.sellingPrice)}</td>
-                      <td style={{ ...S.td, textAlign: "right" }}>{it.batteryPrice ? inr(it.batteryPrice) : "—"}</td>
-                      <td style={{ ...S.td, textAlign: "right", fontFamily: "'JetBrains Mono',monospace" }}>{inr(itemAmount(it))}</td>
-                      <td style={{ ...S.td, textAlign: "right", fontFamily: "'JetBrains Mono',monospace", color: "#C4F135" }}>{inr(itemMargin(it))}</td>
-                    </tr>
+                        </div>
+                        <div style={{ textAlign: "right", fontFamily: "'JetBrains Mono',monospace" }}>
+                          <div style={{ fontWeight: 700, color: "#C4F135", fontSize: 15 }}>{inr(b.total)}</div>
+                          <div style={{ fontSize: 11, color: "#FFB020" }}>Actual {inr(billActual(b))}</div>
+                          <div style={{ fontSize: 11, color: "#3D8BFD" }}>Margin {inr(billMargin(b))}</div>
+                        </div>
+                      </div>
+
+                      <div style={{ overflowX: "auto" }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 760 }}>
+                          <thead>
+                            <tr style={{ color: "#8B93A1", textAlign: "left", borderTop: "1px solid #232833", borderBottom: "1px solid #232833" }}>
+                              <th style={S.th}>Item</th>
+                              <th style={S.th}>Chassis No</th>
+                              <th style={S.th}>Motor No</th>
+                              <th style={S.th}>Battery</th>
+                              <th style={S.th}>Warranty</th>
+                              <th style={{ ...S.th, textAlign: "right" }}>Qty</th>
+                              <th style={{ ...S.th, textAlign: "right" }}>Actual</th>
+                              <th style={{ ...S.th, textAlign: "right" }}>Selling</th>
+                              <th style={{ ...S.th, textAlign: "right" }}>Amount</th>
+                              <th style={{ ...S.th, textAlign: "right" }}>Margin</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(b.items || []).length === 0 ? (
+                              <tr><td style={S.td} colSpan={10}>No item details on this bill.</td></tr>
+                            ) : b.items.map((it, i) => (
+                              <tr key={i} style={{ borderBottom: "1px solid #1E2430" }}>
+                                <td style={S.td}>
+                                  <div style={{ fontWeight: 600 }}>{it.name}</div>
+                                  {(it.model || it.color) && <div style={{ color: "#5A616F", fontSize: 10.5 }}>{[it.model, it.color].filter(Boolean).join(" · ")}</div>}
+                                </td>
+                                <td style={{ ...S.td, fontFamily: "'JetBrains Mono',monospace" }}>{it.chassisNo || "—"}</td>
+                                <td style={{ ...S.td, fontFamily: "'JetBrains Mono',monospace" }}>{it.motorNo || "—"}</td>
+                                <td style={S.td}>{it.batteryType || "—"}</td>
+                                <td style={S.td}>{it.warranty || "—"}</td>
+                                <td style={{ ...S.td, textAlign: "right" }}>{it.qty}</td>
+                                <td style={{ ...S.td, textAlign: "right" }}>{inr(itemActual(it))}</td>
+                                <td style={{ ...S.td, textAlign: "right" }}>{inr(it.sellingPrice)}</td>
+                                <td style={{ ...S.td, textAlign: "right", fontFamily: "'JetBrains Mono',monospace" }}>{inr(itemAmount(it))}</td>
+                                <td style={{ ...S.td, textAlign: "right", fontFamily: "'JetBrains Mono',monospace", color: "#C4F135" }}>{inr(itemMargin(it))}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
                   ))}
-                </tbody>
-              </table>
+                </div>
+              )}
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 /* =========================================================================
-   12. EXPENSES
-   Flow:
-     Expense Name (e.g. "Rent")  +  Amount  +  Note (e.g. "Sameer ko diye the")
-        -> Category = first word of Note (e.g. "Sameer")
-        -> grouped list, header = category, each row = Note | Name | Amount
+   12. EXPENSES — category dropdowns, WhatsApp share, PDF report
+   Category = first word of Note ("Sameer ko diye the" -> "Sameer")
 ========================================================================= */
 function emptyExpense() {
-  return {
-    date: todayISO(),
-    name: "",     // Expense Name — e.g. "Rent", "Bill", "Parts", "Salary"
-    amount: "",
-    note: "",     // e.g. "Sameer ko diye the" — first word becomes the category
-    location: ""
-  };
+  return { date: todayISO(), name: "", amount: "", note: "", location: "" };
 }
 
-// First word of the note becomes the expense category.
-// Example: "Sameer ko diye the" -> "Sameer"
 function getCategoryFromNote(note = "") {
   const firstWord = String(note).trim().split(/\s+/)[0] || "";
   return firstWord.replace(/[.,!?;:()[\]{}"'`]+$/g, "").trim();
 }
 
-function Expenses() {
-  const [range, setRange] = useState("year");
+// jsPDF's built-in fonts can't print the rupee sign, so the PDF uses "Rs."
+function generateExpensePdf(groups, business, period) {
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const W = 210, M = 14;
+  const GREEN = [15, 75, 58];
+  const rs = (n) => "Rs. " + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+  const grand = groups.reduce((s, g) => s + g.total, 0);
+  const count = groups.reduce((s, g) => s + g.items.length, 0);
+
+  // Header band
+  doc.setFillColor(...GREEN);
+  doc.rect(0, 0, W, 32, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  doc.text(business?.name || "Business", M, 14);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.text("EXPENSE REPORT", M, 22);
+  doc.text(periodLabel(period), W - M, 14, { align: "right" });
+  doc.text("Generated: " + fmtDate(new Date()), W - M, 22, { align: "right" });
+
+  doc.setTextColor(60, 60, 60);
+  doc.setFontSize(10);
+  doc.text(`${groups.length} ${groups.length === 1 ? "category" : "categories"}  |  ${count} ${count === 1 ? "entry" : "entries"}  |  Total: ${rs(grand)}`, M, 41);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.setTextColor(...GREEN);
+  doc.text("Summary by Category", M, 50);
+
+  autoTable(doc, {
+    startY: 53,
+    margin: { left: M, right: M },
+    head: [["#", "Category", { content: "Entries", styles: { halign: "center" } }, { content: "Total", styles: { halign: "right" } }]],
+    body: groups.map((g, i) => [i + 1, g.name, { content: String(g.items.length), styles: { halign: "center" } }, { content: rs(g.total), styles: { halign: "right" } }]),
+    foot: [[{ content: "GRAND TOTAL", colSpan: 2 }, { content: String(count), styles: { halign: "center" } }, { content: rs(grand), styles: { halign: "right" } }]],
+    showFoot: "lastPage",
+    theme: "striped",
+    headStyles: { fillColor: GREEN, textColor: 255, fontSize: 9.5 },
+    bodyStyles: { fontSize: 9.5, textColor: 40 },
+    alternateRowStyles: { fillColor: [247, 250, 248] },
+    footStyles: { fillColor: [226, 240, 233], textColor: GREEN, fontStyle: "bold", fontSize: 10 },
+    columnStyles: { 0: { cellWidth: 12 } },
+  });
+
+  groups.forEach((g) => {
+    let y = doc.lastAutoTable.finalY + 12;
+    if (y > 245) { doc.addPage(); y = 20; }
+
+    doc.setFillColor(238, 244, 241);
+    doc.rect(M, y - 6, W - M * 2, 9, "F");
+    doc.setFillColor(...GREEN);
+    doc.rect(M, y - 6, 1.5, 9, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(...GREEN);
+    doc.text(g.name.toUpperCase(), M + 5, y);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(90, 90, 90);
+    doc.text(`${g.items.length} ${g.items.length === 1 ? "entry" : "entries"}`, W - M - 3, y, { align: "right" });
+
+    autoTable(doc, {
+      startY: y + 5,
+      margin: { left: M, right: M },
+      head: [["Date", "Expense", "Note", "Location", { content: "Amount", styles: { halign: "right" } }]],
+      body: g.items.map((e) => [fmtDate(e.date), e.name || "-", e.note || "-", e.location || "-", { content: rs(e.amount), styles: { halign: "right" } }]),
+      foot: [[{ content: `${g.name} total`, colSpan: 4, styles: { halign: "right" } }, { content: rs(g.total), styles: { halign: "right" } }]],
+      showFoot: "lastPage",
+      theme: "grid",
+      styles: { lineColor: [225, 230, 228], lineWidth: 0.2, cellPadding: 2.4, overflow: "linebreak" },
+      headStyles: { fillColor: GREEN, textColor: 255, fontSize: 9 },
+      bodyStyles: { fontSize: 9, textColor: 40 },
+      alternateRowStyles: { fillColor: [250, 252, 251] },
+      footStyles: { fillColor: [226, 240, 233], textColor: GREEN, fontStyle: "bold", fontSize: 9.5 },
+      columnStyles: { 0: { cellWidth: 26 }, 1: { cellWidth: 34 }, 3: { cellWidth: 30 }, 4: { cellWidth: 32 } },
+    });
+  });
+
+  let y = doc.lastAutoTable.finalY + 12;
+  if (y > 262) { doc.addPage(); y = 25; }
+  doc.setFillColor(...GREEN);
+  doc.roundedRect(W - M - 80, y, 80, 14, 2, 2, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.text("GRAND TOTAL", W - M - 76, y + 8.8);
+  doc.setFontSize(12);
+  doc.text(rs(grand), W - M - 4, y + 9, { align: "right" });
+
+  const pages = doc.getNumberOfPages();
+  for (let i = 1; i <= pages; i++) {
+    doc.setPage(i);
+    doc.setDrawColor(210, 215, 212);
+    doc.line(M, 285, W - M, 285);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(120, 120, 120);
+    doc.text(`${business?.name || "Business"} - Expense Report - ${periodLabel(period)}`, M, 290);
+    doc.text(`Page ${i} of ${pages}`, W - M, 290, { align: "right" });
+  }
+
+  doc.save(`Expense_Report_${periodLabel(period).replace(/[^a-zA-Z0-9]+/g, "_")}.pdf`);
+}
+
+function Expenses({ business }) {
+  const [period, setPeriod] = useState(defaultPeriod());
   const [expenses, setExpenses] = useState([]);
   const [draft, setDraft] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState({});
+  const [pdfOpen, setPdfOpen] = useState(false);
+  const [picked, setPicked] = useState({});
 
   const load = useCallback(() => {
     setLoading(true);
-
-    api
-      .get(`/expenses?range=${range}`)
-      .then((res) => {
-        setExpenses(Array.isArray(res.data) ? res.data : []);
-      })
-      .catch((err) => {
-        console.error("Failed to load expenses:", err);
-        setExpenses([]);
-      })
+    api.get("/expenses", { params: periodParams(period) })
+      .then((res) => setExpenses(Array.isArray(res.data) ? res.data : []))
+      .catch((err) => { console.error("Failed to load expenses:", err); setExpenses([]); })
       .finally(() => setLoading(false));
-  }, [range]);
+  }, [period]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
+  useEffect(() => { load(); }, [load]);
   useEffect(() => {
     const refresh = () => load();
-
-    socket.on("expense:created", refresh);
-    socket.on("expense:updated", refresh);
-    socket.on("expense:deleted", refresh);
-
-    return () => {
-      socket.off("expense:created", refresh);
-      socket.off("expense:updated", refresh);
-      socket.off("expense:deleted", refresh);
-    };
+    const events = ["expense:created", "expense:updated", "expense:deleted"];
+    events.forEach((ev) => socket.on(ev, refresh));
+    return () => events.forEach((ev) => socket.off(ev, refresh));
   }, [load]);
 
-  const total = expenses.reduce(
-    (sum, expense) => sum + Number(expense.amount || 0),
-    0
-  );
+  const total = expenses.reduce((s, e) => s + Number(e.amount || 0), 0);
 
-  // Group all expenses by category (derived from the note's first word).
-  const groupedExpenses = useMemo(() => {
-    const groups = {};
-
-    expenses.forEach((expense) => {
-      const category =
-        String(expense.category || "").trim() || "Uncategorized";
-
-      if (!groups[category]) {
-        groups[category] = {
-          items: [],
-          total: 0
-        };
-      }
-
-      groups[category].items.push(expense);
-      groups[category].total += Number(expense.amount || 0);
+  // Group by category, case-insensitive ("sameer" and "Sameer" = one group)
+  const groups = useMemo(() => {
+    const map = {};
+    expenses.forEach((e) => {
+      const raw = String(e.category || "").trim() || "Uncategorized";
+      const key = raw.toLowerCase();
+      if (!map[key]) map[key] = { key, name: raw.charAt(0).toUpperCase() + raw.slice(1), items: [], total: 0 };
+      map[key].items.push(e);
+      map[key].total += Number(e.amount || 0);
     });
-
-    return Object.entries(groups).sort((a, b) =>
-      a[0].localeCompare(b[0])
-    );
+    return Object.values(map).sort((a, b) => a.name.localeCompare(b.name));
   }, [expenses]);
 
-  const updateDraft = (key, value) => {
-    setDraft((current) => {
-      if (!current) return current;
-      return { ...current, [key]: value };
+  const shareCategory = (g) => {
+    let msg = `*${business?.name || "Expenses"} — ${g.name} Expenses*\n${periodLabel(period)}\n\n`;
+    g.items.forEach((e, i) => {
+      msg += `${i + 1}. ${fmtDate(e.date)} — *${e.name || "Expense"}*: ${inr(e.amount)}`;
+      if (e.note) msg += `\n    ${e.note}`;
+      if (e.location) msg += ` (${e.location})`;
+      msg += "\n";
     });
+    msg += `\n*Total: ${inr(g.total)}* (${g.items.length} ${g.items.length === 1 ? "entry" : "entries"})`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
-  // Live preview of what category this expense will land under.
-  const previewCategory = draft
-    ? getCategoryFromNote(draft.note) || "Uncategorized"
-    : "";
+  const openPdfPicker = () => {
+    const all = {};
+    groups.forEach((g) => { all[g.key] = true; });
+    setPicked(all);
+    setPdfOpen(true);
+  };
+  const selectedGroups = groups.filter((g) => picked[g.key]);
+  const allPicked = groups.length > 0 && selectedGroups.length === groups.length;
+  const togglePickAll = () => {
+    const next = {};
+    if (!allPicked) groups.forEach((g) => { next[g.key] = true; });
+    setPicked(next);
+  };
+  const makePdf = () => {
+    if (selectedGroups.length === 0) return;
+    try {
+      generateExpensePdf(selectedGroups, business, period);
+      setPdfOpen(false);
+    } catch (err) {
+      console.error("PDF error:", err);
+      alert("Failed to generate PDF.");
+    }
+  };
+
+  const updateDraft = (key, value) => setDraft((cur) => (cur ? { ...cur, [key]: value } : cur));
+  const previewCategory = draft ? getCategoryFromNote(draft.note) || "Uncategorized" : "";
+  const canSave = draft && String(draft.name || "").trim() && Number(draft.amount) > 0;
 
   const save = async () => {
     if (!draft) return;
-
     const payload = {
       ...draft,
       name: String(draft.name || "").trim(),
       note: String(draft.note || "").trim(),
       category: getCategoryFromNote(draft.note) || "Uncategorized",
     };
-
-    if (!payload.name) {
-      alert("Please enter an expense name (e.g. Rent, Bill, Parts).");
-      return;
-    }
-
-    if (!payload.amount || Number(payload.amount) <= 0) {
-      alert("Please enter a valid amount.");
-      return;
-    }
-
+    if (!payload.name) return alert("Please enter an expense name (e.g. Rent, Bill, Parts).");
+    if (!payload.amount || Number(payload.amount) <= 0) return alert("Please enter a valid amount.");
     try {
       await api.post("/expenses", payload);
       setDraft(null);
       load();
     } catch (err) {
-      console.error("Failed to save expense:", err);
-      alert(
-        err?.response?.data?.message ||
-        "Failed to save expense."
-      );
+      alert(err?.response?.data?.message || "Failed to save expense.");
     }
   };
 
   const remove = async (id) => {
-    if (!window.confirm("Are you sure you want to delete this expense?")) {
-      return;
-    }
-
+    if (!window.confirm("Are you sure you want to delete this expense?")) return;
     try {
       await api.delete(`/expenses/${id}`);
       load();
     } catch (err) {
-      console.error("Failed to delete expense:", err);
-      alert(
-        err?.response?.data?.message ||
-        "Failed to delete expense."
-      );
+      alert(err?.response?.data?.message || "Failed to delete expense.");
     }
   };
 
-  const canSave =
-    draft &&
-    String(draft.name || "").trim() &&
-    draft.amount &&
-    Number(draft.amount) > 0;
-
   return (
     <div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 16,
-          flexWrap: "wrap",
-          gap: 10
-        }}
-      >
-        <RangeTabs range={range} setRange={setRange} />
+      <PeriodPicker period={period} setPeriod={setPeriod} />
 
-        <button
-          onClick={() => setDraft(emptyExpense())}
-          style={S.primaryBtn}
-        >
-          <Plus size={16} />
-          Add expense
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+        <button onClick={() => setDraft(emptyExpense())} style={S.primaryBtn}><Plus size={16} /> Add expense</button>
+        <button onClick={openPdfPicker} disabled={groups.length === 0} style={{ ...S.ghostBtn, opacity: groups.length === 0 ? 0.4 : 1 }}>
+          <FileText size={15} /> Generate PDF
         </button>
       </div>
 
-      <StatCard
-        icon={Wallet}
-        label={`Total expenses · ${RANGE_LABEL[range]}`}
-        value={inr(total)}
-        accent="#FF6B6B"
-      />
+      <StatCard icon={Wallet} label={`Total expenses · ${periodLabel(period)}`} value={inr(total)} accent="#FF6B6B" sub={`${groups.length} ${groups.length === 1 ? "category" : "categories"}`} />
 
-      {/* CATEGORY GROUPS — header = category (e.g. "SAMEER"), each row =
-          Note | Expense Name | Amount, matching the target layout. */}
-      <div
-        style={{
-          marginTop: 18,
-          display: "flex",
-          flexDirection: "column",
-          gap: 14
-        }}
-      >
-        {loading ? (
-          <Empty text="Loading expenses…" />
-        ) : expenses.length === 0 ? (
-          <Empty text="No expenses recorded." />
-        ) : (
-          groupedExpenses.map(([category, group]) => (
-            <div key={category} style={S.card}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: 10,
-                  marginBottom: 4,
-                  paddingBottom: 10,
-                  borderBottom: "1px solid #232833",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 9,
-                    minWidth: 0
-                  }}
+      <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+        {loading ? <Empty text="Loading expenses…" /> : groups.length === 0 ? <Empty text="No expenses recorded." /> : groups.map((g) => {
+          const isOpen = !!open[g.key];
+          return (
+            <div key={g.key} style={{ ...S.card, padding: 0, overflow: "hidden" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 14px" }}>
+                <button
+                  onClick={() => setOpen((o) => ({ ...o, [g.key]: !o[g.key] }))}
+                  style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10, background: "none", border: "none", color: "inherit", cursor: "pointer", textAlign: "left", padding: 0 }}
                 >
-                  <div
-                    style={{
-                      width: 34,
-                      height: 34,
-                      borderRadius: 10,
-                      background: "rgba(196,241,53,0.10)",
-                      border: "1px solid rgba(196,241,53,0.25)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "#C4F135",
-                      fontWeight: 800,
-                      flexShrink: 0
-                    }}
-                  >
-                    {category.charAt(0).toUpperCase()}
+                  <div style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(196,241,53,0.10)", border: "1px solid rgba(196,241,53,0.25)", display: "flex", alignItems: "center", justifyContent: "center", color: "#C4F135", fontWeight: 800, flexShrink: 0 }}>
+                    {g.name.charAt(0).toUpperCase()}
                   </div>
-
-                  <div style={{ minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontSize: 14.5,
-                        fontWeight: 700,
-                        letterSpacing: 0.3,
-                        textTransform: "uppercase",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap"
-                      }}
-                    >
-                      {category}
-                    </div>
-
-                    <div
-                      style={{
-                        color: "#5A616F",
-                        fontSize: 11.5,
-                        marginTop: 2
-                      }}
-                    >
-                      {group.items.length}{" "}
-                      {group.items.length === 1 ? "expense" : "expenses"}
-                    </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 14.5, fontWeight: 700, letterSpacing: 0.3, textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.name}</div>
+                    <div style={{ color: "#5A616F", fontSize: 11.5, marginTop: 2 }}>{g.items.length} {g.items.length === 1 ? "expense" : "expenses"}</div>
                   </div>
-                </div>
-
-                <div
-                  style={{
-                    fontFamily: "'JetBrains Mono',monospace",
-                    fontWeight: 700,
-                    color: "#FF6B6B",
-                    whiteSpace: "nowrap"
-                  }}
-                >
-                  {inr(group.total)}
-                </div>
+                  <div style={{ fontFamily: "'JetBrains Mono',monospace", fontWeight: 700, color: "#FF6B6B", whiteSpace: "nowrap" }}>{inr(g.total)}</div>
+                  <ChevronDown size={18} color="#8B93A1" style={{ transform: isOpen ? "rotate(180deg)" : "none", transition: "transform .15s", flexShrink: 0 }} />
+                </button>
+                <button onClick={() => shareCategory(g)} title={`Share ${g.name} expenses on WhatsApp`} style={{ ...S.iconBtn, background: "#25D366", color: "#fff", flexShrink: 0 }}>
+                  <MessageCircle size={15} />
+                </button>
               </div>
 
-              {/* Column headers: Note | Expense | Amount */}
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: "8px 0 6px",
-                }}
-              >
-                <div style={{ flex: 1, minWidth: 0, color: "#5A616F", fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                  Note
-                </div>
-                <div style={{ flexShrink: 0, minWidth: 70, textAlign: "center", color: "#5A616F", fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                  Expense
-                </div>
-                <div style={{ flexShrink: 0, minWidth: 60, textAlign: "right", color: "#5A616F", fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, paddingRight: 38 }}>
-                  Amount
-                </div>
-              </div>
-
-              {/* Rows: Note (left, grows) — Expense Name (center badge) — Amount (right) */}
-              <div>
-                {group.items.map((e) => (
-                  <div
-                    key={e._id}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: 10,
-                      padding: "11px 0",
-                      borderBottom: "1px solid #232833"
-                    }}
-                  >
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div
-                        style={{
-                          color: "#D6DAE2",
-                          fontSize: 13,
-                          fontWeight: 600,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap"
-                        }}
-                      >
-                        {e.note || e.name || "Expense"}
+              {isOpen && (
+                <div style={{ borderTop: "1px solid #232833", padding: "4px 14px 8px" }}>
+                  {g.items.map((e) => (
+                    <div key={e._id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "11px 0", borderBottom: "1px solid #1E2430" }}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ color: "#D6DAE2", fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.note || e.name || "Expense"}</div>
+                        <div style={{ color: "#5A616F", fontSize: 11.5, marginTop: 3 }}>{fmtDate(e.date)}{e.location ? ` · ${e.location}` : ""}</div>
                       </div>
-
-                      <div
-                        style={{
-                          color: "#5A616F",
-                          fontSize: 11.5,
-                          marginTop: 3
-                        }}
-                      >
-                        {fmtDate(e.date)}
-                        {e.location ? ` · ${e.location}` : ""}
+                      <span style={{ background: "#1E2430", color: "#8FAE2A", fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 20, whiteSpace: "nowrap" }}>{e.name || "—"}</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                        <div style={{ fontFamily: "'JetBrains Mono',monospace", fontWeight: 700, color: "#FF6B6B", fontSize: 13, minWidth: 60, textAlign: "right" }}>{inr(e.amount)}</div>
+                        <button onClick={() => remove(e._id)} style={S.iconBtn} title="Delete expense"><Trash2 size={14} /></button>
                       </div>
                     </div>
-
-                    <div
-                      style={{
-                        flexShrink: 0,
-                        minWidth: 70,
-                        textAlign: "center",
-                      }}
-                    >
-                      <span
-                        style={{
-                          display: "inline-block",
-                          background: "#1E2430",
-                          color: "#8FAE2A",
-                          fontSize: 11,
-                          fontWeight: 700,
-                          padding: "3px 9px",
-                          borderRadius: 20,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {e.name || "—"}
-                      </span>
-                    </div>
-
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        flexShrink: 0
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontFamily: "'JetBrains Mono',monospace",
-                          fontWeight: 700,
-                          color: "#FF6B6B",
-                          fontSize: 13,
-                          minWidth: 60,
-                          textAlign: "right",
-                        }}
-                      >
-                        {inr(e.amount)}
-                      </div>
-
-                      <button
-                        onClick={() => remove(e._id)}
-                        style={S.iconBtn}
-                        title="Delete expense"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
-          ))
-        )}
+          );
+        })}
       </div>
 
+      {pdfOpen && (
+        <Modal title="Generate expense PDF" onClose={() => setPdfOpen(false)}>
+          <div style={{ color: "#8B93A1", fontSize: 12.5, marginBottom: 12 }}>Select the categories to include · {periodLabel(period)}</div>
+          <button onClick={togglePickAll} style={{ ...S.ghostBtnSm, flex: "none", width: "100%", marginBottom: 10, padding: "10px" }}>
+            {allPicked ? "Clear all" : "Select all"}
+          </button>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {groups.map((g) => {
+              const on = !!picked[g.key];
+              return (
+                <button
+                  key={g.key}
+                  onClick={() => setPicked((p) => ({ ...p, [g.key]: !p[g.key] }))}
+                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 10, cursor: "pointer", textAlign: "left", color: "inherit", background: on ? "rgba(196,241,53,0.08)" : "#171B23", border: "1px solid " + (on ? "#C4F135" : "#2A2F3A") }}
+                >
+                  <div style={{ width: 20, height: 20, borderRadius: 6, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: on ? "#C4F135" : "transparent", border: "1.5px solid " + (on ? "#C4F135" : "#5A616F") }}>
+                    {on && <Check size={14} color="#12151A" strokeWidth={3} />}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13.5, textTransform: "uppercase" }}>{g.name}</div>
+                    <div style={{ color: "#5A616F", fontSize: 11.5 }}>{g.items.length} {g.items.length === 1 ? "entry" : "entries"}</div>
+                  </div>
+                  <div style={{ fontFamily: "'JetBrains Mono',monospace", fontWeight: 700, color: "#FF6B6B", fontSize: 13 }}>{inr(g.total)}</div>
+                </button>
+              );
+            })}
+          </div>
+          <button onClick={makePdf} disabled={selectedGroups.length === 0} style={{ ...S.primaryBtn, width: "100%", marginTop: 16, opacity: selectedGroups.length === 0 ? 0.4 : 1 }}>
+            <FileText size={16} /> Generate PDF ({selectedGroups.length})
+          </button>
+        </Modal>
+      )}
+
       {draft && (
-        <Modal
-          title="Add expense"
-          onClose={() => setDraft(null)}
-        >
+        <Modal title="Add expense" onClose={() => setDraft(null)}>
           <div style={S.formGrid}>
-            <Field
-              label="Expense Name *"
-              value={draft.name}
-              onChange={(v) => updateDraft("name", v)}
-              placeholder="e.g. Rent, Bill, Parts, Salary"
-            />
-
-            <Field
-              label="Amount *"
-              value={draft.amount}
-              onChange={(v) =>
-                updateDraft(
-                  "amount",
-                  v.replace(/[^0-9.]/g, "")
-                )
-              }
-              placeholder="0"
-            />
-
-            <Field
-              label="Note"
-              value={draft.note}
-              onChange={(v) => updateDraft("note", v)}
-              placeholder="e.g. Sameer ko diye the"
-              textarea
-            />
-
-            <div
-              style={{
-                border: "1px solid #303846",
-                background: "#171B23",
-                borderRadius: 10,
-                padding: "10px 12px",
-                fontSize: 12
-              }}
-            >
-              <span style={{ color: "#8B93A1" }}>
-                Category (auto, from first word of note):
-              </span>{" "}
-              <b style={{ color: "#C4F135" }}>
-                {previewCategory}
-              </b>
+            <Field label="Expense Name *" value={draft.name} onChange={(v) => updateDraft("name", v)} placeholder="e.g. Rent, Bill, Parts, Salary" />
+            <Field label="Amount *" value={draft.amount} onChange={(v) => updateDraft("amount", v.replace(/[^0-9.]/g, ""))} placeholder="0" />
+            <Field label="Note" value={draft.note} onChange={(v) => updateDraft("note", v)} placeholder="e.g. Sameer ko diye the" textarea />
+            <div style={{ border: "1px solid #303846", background: "#171B23", borderRadius: 10, padding: "10px 12px", fontSize: 12 }}>
+              <span style={{ color: "#8B93A1" }}>Category (auto, from first word of note):</span>{" "}
+              <b style={{ color: "#C4F135" }}>{previewCategory}</b>
             </div>
-
             <div style={{ display: "flex", gap: 10 }}>
-              <Field
-                label="Date"
-                type="date"
-                value={draft.date}
-                onChange={(v) => updateDraft("date", v)}
-              />
-
-              <Field
-                label="Location"
-                value={draft.location}
-                onChange={(v) => updateDraft("location", v)}
-                placeholder="e.g. Main Showroom"
-              />
+              <Field label="Date" type="date" value={draft.date} onChange={(v) => updateDraft("date", v)} />
+              <Field label="Location" value={draft.location} onChange={(v) => updateDraft("location", v)} placeholder="e.g. Main Showroom" />
             </div>
           </div>
-
-          <button
-            onClick={save}
-            disabled={!canSave}
-            style={{
-              ...S.primaryBtn,
-              width: "100%",
-              marginTop: 16,
-              opacity: canSave ? 1 : 0.4,
-              position: "sticky",
-              bottom: -1,
-              zIndex: 1,
-              boxShadow: "0 -8px 16px 4px #171B23"
-            }}
-          >
-            <Check size={16} />
-            Save expense
+          <button onClick={save} disabled={!canSave} style={{ ...S.primaryBtn, width: "100%", marginTop: 16, opacity: canSave ? 1 : 0.4 }}>
+            <Check size={16} /> Save expense
           </button>
         </Modal>
       )}
@@ -1885,22 +1303,23 @@ function Expenses() {
 function emptyPartner() { return { name: "", phone: "", sharePercent: "" }; }
 
 function Partners({ business }) {
-  const [range, setRange] = useState("year");
+  const [period, setPeriod] = useState(defaultPeriod());
   const [partners, setPartners] = useState([]);
   const [bills, setBills] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [draft, setDraft] = useState(null);
   const [loading, setLoading] = useState(true);
-  // Reinvestment is set aside from net profit before splitting between
-  // partners. Kept per range in local state so it's easy to adjust.
-  const [reinvest, setReinvest] = useState({});
+  const [reinvest, setReinvest] = useState({}); // per period label
+
+  const label = periodLabel(period);
 
   const load = useCallback(() => {
     setLoading(true);
+    const params = periodParams(period);
     Promise.all([
       api.get("/partners").catch(() => ({ data: [] })),
-      api.get(`/bills?range=${range}`).catch(() => ({ data: [] })),
-      api.get(`/expenses?range=${range}`).catch(() => ({ data: [] })),
+      api.get("/bills", { params }).catch(() => ({ data: [] })),
+      api.get("/expenses", { params }).catch(() => ({ data: [] })),
     ])
       .then(([p, b, e]) => {
         setPartners(Array.isArray(p.data) ? p.data : []);
@@ -1908,21 +1327,21 @@ function Partners({ business }) {
         setExpenses(Array.isArray(e.data) ? e.data : []);
       })
       .finally(() => setLoading(false));
-  }, [range]);
+  }, [period]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     const refresh = () => load();
     const events = ["partner:created", "partner:updated", "partner:deleted", "bill:created", "bill:updated", "bill:deleted", "expense:created", "expense:updated", "expense:deleted"];
     events.forEach((ev) => socket.on(ev, refresh));
-    return () => { events.forEach((ev) => socket.off(ev, refresh)); };
+    return () => events.forEach((ev) => socket.off(ev, refresh));
   }, [load]);
 
   const sales = bills.reduce((s, b) => s + Number(b.total || 0), 0);
-  const grossProfit = bills.reduce((s, b) => s + (b.items || []).reduce((x, it) => x + (Number(it.sellingPrice || 0) - Number(it.actualPrice || 0)) * Number(it.qty || 1), 0), 0);
+  const grossProfit = bills.reduce((s, b) => s + billMargin(b), 0);
   const expTotal = expenses.reduce((s, e) => s + Number(e.amount || 0), 0);
   const netProfit = grossProfit - expTotal;
-  const reinvestAmount = Math.max(0, Number(reinvest[range] || 0));
+  const reinvestAmount = Math.max(0, Number(reinvest[label] || 0));
   const distributable = Math.max(0, netProfit - reinvestAmount);
 
   const save = async () => {
@@ -1932,7 +1351,6 @@ function Partners({ business }) {
       setDraft(null);
       load();
     } catch (err) {
-      console.error("Failed to save partner:", err);
       alert(err?.response?.data?.message || "Failed to save partner.");
     }
   };
@@ -1943,13 +1361,12 @@ function Partners({ business }) {
       await api.delete(`/partners/${id}`);
       load();
     } catch (err) {
-      console.error("Failed to remove partner:", err);
       alert(err?.response?.data?.message || "Failed to remove partner.");
     }
   };
 
   const shareToAll = () => {
-    let msg = `*${business?.name || "Business"} — ${RANGE_LABEL[range]} Report*\n\n`;
+    let msg = `*${business?.name || "Business"} — ${label} Report*\n\n`;
     msg += `Total Sales: ${inr(sales)}\nGross Profit: ${inr(grossProfit)}\nExpenses: ${inr(expTotal)}\nNet Profit: ${inr(netProfit)}\n`;
     if (reinvestAmount > 0) msg += `Reinvestment set aside: ${inr(reinvestAmount)}\n`;
     msg += `*Distributable Profit: ${inr(distributable)}*\n\n*Partner Shares:*\n`;
@@ -1959,7 +1376,7 @@ function Partners({ business }) {
 
   const shareToPartner = (p) => {
     const share = distributable * (Number(p.sharePercent) || 0) / 100;
-    let msg = `Hi ${p.name}, here's the *${RANGE_LABEL[range]}* summary from ${business?.name || "us"}:\n\n`;
+    let msg = `Hi ${p.name}, here's the *${label}* summary from ${business?.name || "us"}:\n\n`;
     msg += `Total Sales: ${inr(sales)}\nGross Profit: ${inr(grossProfit)}\nExpenses: ${inr(expTotal)}\nNet Profit: ${inr(netProfit)}\n`;
     if (reinvestAmount > 0) msg += `Reinvestment set aside: ${inr(reinvestAmount)}\n`;
     msg += `Distributable Profit: ${inr(distributable)}\n\n*Your share (${p.sharePercent}%): ${inr(share)}*`;
@@ -1969,9 +1386,9 @@ function Partners({ business }) {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
-        <RangeTabs range={range} setRange={setRange} />
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
+        <PeriodPicker period={period} setPeriod={setPeriod} />
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
           {partners.length > 0 && <button onClick={shareToAll} style={S.ghostBtn}><Share2 size={15} /> Share full report</button>}
           <button onClick={() => setDraft(emptyPartner())} style={S.primaryBtn}><Plus size={16} /> Add partner</button>
         </div>
@@ -1991,9 +1408,9 @@ function Partners({ business }) {
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
           <Field
-            label={`Reinvestment amount · ${RANGE_LABEL[range]}`}
-            value={String(reinvest[range] ?? "")}
-            onChange={(v) => setReinvest((r) => ({ ...r, [range]: v.replace(/[^0-9.]/g, "") }))}
+            label={`Reinvestment amount · ${label}`}
+            value={String(reinvest[label] ?? "")}
+            onChange={(v) => setReinvest((r) => ({ ...r, [label]: v.replace(/[^0-9.]/g, "") }))}
             placeholder="0"
           />
           <div style={{ paddingBottom: 10, fontSize: 13 }}>
@@ -2029,12 +1446,148 @@ function Partners({ business }) {
             <Field label="WhatsApp number" value={draft.phone} onChange={(v) => setDraft((d) => ({ ...d, phone: v }))} placeholder="91 98765 43210" />
             <Field label="Profit share %" value={draft.sharePercent} onChange={(v) => setDraft((d) => ({ ...d, sharePercent: v.replace(/[^0-9.]/g, "") }))} placeholder="e.g. 25" />
           </div>
-          <button
-            onClick={save}
-            disabled={!draft.name || !draft.sharePercent}
-            style={{ ...S.primaryBtn, width: "100%", marginTop: 16, opacity: (!draft.name || !draft.sharePercent) ? 0.4 : 1, position: "sticky", bottom: -1, zIndex: 1, boxShadow: "0 -8px 16px 4px #171B23" }}
-          >
+          <button onClick={save} disabled={!draft.name || !draft.sharePercent} style={{ ...S.primaryBtn, width: "100%", marginTop: 16, opacity: (!draft.name || !draft.sharePercent) ? 0.4 : 1 }}>
             <Check size={16} /> Save partner
+          </button>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================================
+   13B. SPARE PARTS
+========================================================================= */
+function emptyPart() {
+  return { name: "", partNumber: "", supplier: "", qty: "", costPrice: "", sellingPrice: "", notes: "" };
+}
+
+function SpareParts() {
+  const [parts, setParts] = useState([]);
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(null); // { id, data }
+
+  const load = useCallback(() => {
+    setLoading(true);
+    api.get("/spare-parts", { params: query ? { q: query } : {} })
+      .then((res) => setParts(Array.isArray(res.data) ? res.data : []))
+      .catch((err) => { console.error("Failed to load spare parts:", err); setParts([]); })
+      .finally(() => setLoading(false));
+  }, [query]);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const refresh = () => load();
+    const events = ["sparepart:created", "sparepart:updated", "sparepart:deleted"];
+    events.forEach((ev) => socket.on(ev, refresh));
+    return () => events.forEach((ev) => socket.off(ev, refresh));
+  }, [load]);
+
+  const totalUnits = parts.reduce((s, p) => s + Number(p.qty || 0), 0);
+  const stockValue = parts.reduce((s, p) => s + Number(p.qty || 0) * Number(p.costPrice || 0), 0);
+
+  const openNew = () => setEditing({ id: null, data: emptyPart() });
+  const openEdit = (p) => setEditing({ id: p._id, data: { ...emptyPart(), ...p } });
+  const set = (k, v) => setEditing((e) => ({ ...e, data: { ...e.data, [k]: v } }));
+  const num = (v) => v.replace(/[^0-9.]/g, "");
+
+  const save = async () => {
+    if (!editing?.data.name.trim()) return;
+    const d = editing.data;
+    const payload = {
+      name: d.name.trim(),
+      partNumber: d.partNumber || "",
+      supplier: d.supplier || "",
+      notes: d.notes || "",
+      qty: Number(d.qty) || 0,
+      costPrice: Number(d.costPrice) || 0,
+      sellingPrice: Number(d.sellingPrice) || 0,
+    };
+    try {
+      if (editing.id) await api.put(`/spare-parts/${editing.id}`, payload);
+      else await api.post("/spare-parts", payload);
+      setEditing(null);
+      load();
+    } catch (err) {
+      alert(err?.response?.data?.message || "Failed to save spare part.");
+    }
+  };
+
+  const remove = async (id) => {
+    if (!window.confirm("Delete this spare part?")) return;
+    try {
+      await api.delete(`/spare-parts/${id}`);
+      load();
+    } catch (err) {
+      alert(err?.response?.data?.message || "Failed to delete spare part.");
+    }
+  };
+
+  return (
+    <div>
+      <div style={S.statGrid}>
+        <StatCard icon={Wrench} label="Part types" value={String(parts.length)} accent="#C4F135" />
+        <StatCard icon={Boxes} label="Units in stock" value={String(totalUnits)} accent="#3D8BFD" />
+        <StatCard icon={Wallet} label="Stock value (cost)" value={inr(stockValue)} accent="#FFB020" />
+      </div>
+
+      <div style={{ display: "flex", gap: 10, margin: "16px 0", flexWrap: "wrap" }}>
+        <div style={{ ...S.searchBox, flex: 1, minWidth: 180 }}>
+          <Search size={15} color="#5A616F" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name, part no., supplier" style={S.searchInput} />
+        </div>
+        <button onClick={openNew} style={S.primaryBtn}><Plus size={16} /> Add spare part</button>
+      </div>
+
+      {loading ? <Empty text="Loading spare parts…" /> : parts.length === 0 ? <Empty text="No spare parts added yet." /> : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 14 }}>
+          {parts.map((p) => {
+            const out = Number(p.qty || 0) <= 0;
+            return (
+              <div key={p._id} style={S.card}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 15 }}>{p.name}</div>
+                    <div style={{ color: "#5A616F", fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>{p.partNumber ? `Part # ${p.partNumber}` : "No part number"}</div>
+                    {p.supplier ? <div style={{ color: "#5A616F", fontSize: 11.5, marginTop: 2 }}>Supplier: {p.supplier}</div> : null}
+                  </div>
+                  <span style={{ alignSelf: "flex-start", whiteSpace: "nowrap", fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 20, background: out ? "rgba(255,107,107,0.12)" : "rgba(196,241,53,0.12)", color: out ? "#FF6B6B" : "#C4F135" }}>
+                    {out ? "Out of stock" : `Qty ${p.qty}`}
+                  </span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, fontSize: 12.5, gap: 10, flexWrap: "wrap" }}>
+                  <div style={{ color: "#8B93A1" }}>Cost: <b style={{ color: "#F2F3F0" }}>{inr(p.costPrice)}</b></div>
+                  <div style={{ color: "#8B93A1" }}>Selling: <b style={{ color: "#C4F135" }}>{inr(p.sellingPrice)}</b></div>
+                </div>
+                {p.notes ? <div style={{ color: "#8B93A1", fontSize: 12, marginTop: 8 }}>{p.notes}</div> : null}
+                <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                  <button onClick={() => openEdit(p)} style={S.ghostBtnSm}><Edit2 size={13} /> Edit</button>
+                  <button onClick={() => remove(p._id)} style={{ ...S.ghostBtnSm, color: "#FF6B6B" }}><Trash2 size={13} /> Delete</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {editing && (
+        <Modal title={editing.id ? "Edit spare part" : "Add spare part"} onClose={() => setEditing(null)}>
+          <div style={S.formGrid}>
+            <Field label="Part name *" value={editing.data.name} onChange={(v) => set("name", v)} placeholder="e.g. Brake pad set" />
+            <div style={{ display: "flex", gap: 10 }}>
+              <Field label="Part number" value={editing.data.partNumber} onChange={(v) => set("partNumber", v)} placeholder="BP-1021" />
+              <Field label="Quantity" value={String(editing.data.qty ?? "")} onChange={(v) => set("qty", num(v))} placeholder="0" />
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <Field label="Cost price" value={String(editing.data.costPrice ?? "")} onChange={(v) => set("costPrice", num(v))} placeholder="0" />
+              <Field label="Selling price" value={String(editing.data.sellingPrice ?? "")} onChange={(v) => set("sellingPrice", num(v))} placeholder="0" />
+            </div>
+            <Field label="Supplier" value={editing.data.supplier} onChange={(v) => set("supplier", v)} placeholder="Supplier name" />
+            <Field label="Notes" value={editing.data.notes} onChange={(v) => set("notes", v)} placeholder="Compatible models, rack location…" textarea />
+          </div>
+          <button onClick={save} disabled={!editing.data.name.trim()} style={{ ...S.primaryBtn, width: "100%", marginTop: 16, opacity: editing.data.name.trim() ? 1 : 0.4 }}>
+            <Check size={16} /> Save spare part
           </button>
         </Modal>
       )}
@@ -2110,7 +1663,7 @@ function SettingsTab({ business, setBusiness }) {
 }
 
 /* =========================================================================
-   15. SHARED 
+   15. SHARED
 ========================================================================= */
 export function Field({ label, value, onChange, placeholder, textarea, type = "text" }) {
   return (
@@ -2124,230 +1677,46 @@ export function Field({ label, value, onChange, placeholder, textarea, type = "t
     </div>
   );
 }
-function ScooterModal({
-  editing,
-  setEditing,
-  onClose,
-  onSave,
-}) {
+
+function ScooterModal({ editing, setEditing, onClose, onSave }) {
   const f = editing.data;
 
-  const set = (key, value) => {
-    setEditing((prev) => ({
-      ...prev,
-
-      data: {
-        ...prev.data,
-        [key]: value,
-      },
-    }));
-  };
+  const set = (key, value) => setEditing((prev) => ({ ...prev, data: { ...prev.data, [key]: value } }));
 
   const handleImg = (e) => {
     const file = e.target.files?.[0];
-
     if (!file) return;
-
-    const preview = URL.createObjectURL(file);
-
-    setEditing((prev) => ({
-      ...prev,
-      imageFile: file,
-      imagePreview: preview,
-    }));
+    setEditing((prev) => ({ ...prev, imageFile: file, imagePreview: URL.createObjectURL(file) }));
   };
 
   const canSave = Boolean(f.name);
 
   return (
-    <Modal
-      title={
-        editing.id
-          ? "Edit scooter"
-          : "Add scooter"
-      }
-      onClose={onClose}
-    >
-      {/* IMAGE */}
-      <div
-        style={{
-          display: "flex",
-          gap: 14,
-          marginBottom: 16,
-          alignItems: "center",
-        }}
-      >
-        <div
-          style={{
-            width: 60,
-            height: 60,
-
-            borderRadius: 10,
-            background: "#1E2430",
-
-            overflow: "hidden",
-
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-
-            flexShrink: 0,
-          }}
-        >
-          {editing.imagePreview ? (
-            <img
-              src={editing.imagePreview}
-              alt="Scooter"
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-              }}
-            />
-          ) : (
-            <ImageIcon
-              size={22}
-              color="#5A616F"
-            />
-          )}
+    <Modal title={editing.id ? "Edit scooter" : "Add scooter"} onClose={onClose}>
+      <div style={{ display: "flex", gap: 14, marginBottom: 16, alignItems: "center" }}>
+        <div style={{ width: 60, height: 60, borderRadius: 10, background: "#1E2430", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          {editing.imagePreview ? <img src={editing.imagePreview} alt="Scooter" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <ImageIcon size={22} color="#5A616F" />}
         </div>
-
-        <label
-          style={{
-            ...S.ghostBtn,
-            cursor: "pointer",
-            fontSize: 13,
-          }}
-        >
-          <Upload size={14} />
-
-          Upload image
-
-          <input
-            type="file"
-            accept="image/*"
-            onChange={handleImg}
-            style={{
-              display: "none",
-            }}
-          />
+        <label style={{ ...S.ghostBtn, cursor: "pointer", fontSize: 13 }}>
+          <Upload size={14} /> Upload image
+          <input type="file" accept="image/*" onChange={handleImg} style={{ display: "none" }} />
         </label>
       </div>
 
-      {/* FORM */}
       <div style={S.formGrid}>
-
-        <Field
-          label="Scooter name *"
-          value={f.name}
-          onChange={(v) =>
-            set("name", v)
-          }
-          placeholder="e.g. Volt Ryder X1"
-        />
-
-        <Field
-          label="Chassis no."
-          value={f.chassisNo}
-          onChange={(v) =>
-            set("chassisNo", v)
-          }
-          placeholder="CH-000123"
-        />
-
-        <Field
-          label="Motor no."
-          value={f.motorNo}
-          onChange={(v) =>
-            set("motorNo", v)
-          }
-          placeholder="MT-000456"
-        />
-
-        <Field
-          label="Warranty"
-          value={f.warranty}
-          onChange={(v) =>
-            set("warranty", v)
-          }
-          placeholder="e.g. 2 yrs"
-        />
-
-        <Field
-          label="Features"
-          value={f.features}
-          onChange={(v) =>
-            set("features", v)
-          }
-          placeholder="LED display, reverse mode..."
-          textarea
-        />
-
-        {/* Reference price only — battery info/price and actual cost/selling
-            price are collected later, per-unit, when this scooter is added
-            to a bill (see Billing.jsx). Pricing and battery choice can vary
-            sale to sale, so they don't belong on the static catalogue entry. */}
-        <Field
-          label="Scooter price (reference)"
-          value={f.scooterPrice}
-          onChange={(v) =>
-            set(
-              "scooterPrice",
-              v.replace(/[^0-9.]/g, "")
-            )
-          }
-          placeholder="0"
-        />
-
+        <Field label="Scooter name *" value={f.name} onChange={(v) => set("name", v)} placeholder="e.g. Volt Ryder X1" />
+        <Field label="Chassis no." value={f.chassisNo} onChange={(v) => set("chassisNo", v)} placeholder="CH-000123" />
+        <Field label="Motor no." value={f.motorNo} onChange={(v) => set("motorNo", v)} placeholder="MT-000456" />
+        <Field label="Warranty" value={f.warranty} onChange={(v) => set("warranty", v)} placeholder="e.g. 2 yrs" />
+        <Field label="Features" value={f.features} onChange={(v) => set("features", v)} placeholder="LED display, reverse mode..." textarea />
+        {/* Reference price only — battery info/price and actual cost/selling price
+            are collected per-unit when the scooter is added to a bill (Billing.jsx). */}
+        <Field label="Scooter price (reference)" value={f.scooterPrice} onChange={(v) => set("scooterPrice", v.replace(/[^0-9.]/g, ""))} placeholder="0" />
       </div>
 
-      {/* SAVE BUTTON */}
-
-      <div
-        style={{
-          marginTop: 20,
-
-          paddingTop: 14,
-          paddingBottom: 14,
-
-          position: "sticky",
-
-          bottom: 0,
-
-          zIndex: 999999,
-
-          background: "#202631",
-
-          borderTop:
-            "1px solid #303846",
-        }}
-      >
-        <button
-          onClick={onSave}
-          disabled={!canSave}
-          style={{
-            ...S.primaryBtn,
-
-            width: "100%",
-
-            justifyContent: "center",
-
-            minHeight: 48,
-
-            opacity:
-              canSave
-                ? 1
-                : 0.45,
-
-            pointerEvents:
-              canSave
-                ? "auto"
-                : "none",
-          }}
-        >
-          <Check size={17} />
-
-          Save scooter
+      <div style={{ marginTop: 20, paddingTop: 14, paddingBottom: 14, position: "sticky", bottom: 0, zIndex: 999999, background: "#202631", borderTop: "1px solid #303846" }}>
+        <button onClick={onSave} disabled={!canSave} style={{ ...S.primaryBtn, width: "100%", justifyContent: "center", minHeight: 48, opacity: canSave ? 1 : 0.45, pointerEvents: canSave ? "auto" : "none" }}>
+          <Check size={17} /> Save scooter
         </button>
       </div>
     </Modal>
@@ -2355,7 +1724,7 @@ function ScooterModal({
 }
 
 /* =========================================================================
-   16. STYLE TOKEN
+   16. STYLE TOKENS
 ========================================================================= */
 export const S = {
   screen: { minHeight: "100vh", background: "#12151A", display: "flex", justifyContent: "center", fontFamily: "'Inter',sans-serif", color: "#F2F3F0" },
