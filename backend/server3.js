@@ -84,9 +84,8 @@ const scooterSchema = new mongoose.Schema(
     batteryInfo: { type: String, default: "" },
     scooterPrice: { type: Number, default: 0 },
     batteryPrice: { type: Number, default: 0 },
-    // No longer required at catalogue time — battery info/price and actual
-    // cost/selling price are now entered per-unit when the scooter is added
-    // to a bill (pricing and battery choice can vary sale to sale).
+    // Battery info/price and actual cost/selling price are entered per-unit
+    // when the scooter is added to a bill (they can vary sale to sale).
     actualPrice: { type: Number, default: 0 },
     sellingPrice: { type: Number, default: 0 },
     stockStatus: { type: String, enum: ["in_stock", "sold", "service"], default: "in_stock" },
@@ -103,7 +102,7 @@ const billItemSchema = new mongoose.Schema(
     description: { type: String, default: "" },
     chassisNo: { type: String, default: "" },
     motorNo: { type: String, default: "" },
-    warranty: { type: String, default: "" }, // was missing — battery price/warranty were being silently stripped on save
+    warranty: { type: String, default: "" },
     // vehicle spec fields shown on the printed invoice — all optional
     model: { type: String, default: "" },
     color: { type: String, default: "" },
@@ -172,6 +171,21 @@ const partnerSchema = new mongoose.Schema(
 );
 const Partner = mongoose.model("Partner", partnerSchema);
 
+const sparePartSchema = new mongoose.Schema(
+  {
+    owner: { type: mongoose.Schema.Types.ObjectId, ref: "Owner", required: true, index: true },
+    name: { type: String, required: true },
+    partNumber: { type: String, default: "" },
+    supplier: { type: String, default: "" },
+    qty: { type: Number, default: 0 },
+    costPrice: { type: Number, default: 0 },
+    sellingPrice: { type: Number, default: 0 },
+    notes: { type: String, default: "" },
+  },
+  { timestamps: true }
+);
+const SparePart = mongoose.model("SparePart", sparePartSchema);
+
 /* =========================================================================
    3. HELPERS
 ========================================================================= */
@@ -208,10 +222,8 @@ function getRangeDates(range) {
   } else if (range === "week") {
     // Monday → Sunday
     start = new Date(now);
-
     const day = start.getDay(); // Sunday=0, Monday=1, ... Saturday=6
     const daysFromMonday = day === 0 ? 6 : day - 1;
-
     start.setDate(start.getDate() - daysFromMonday);
     start.setHours(0, 0, 0, 0);
   } else if (range === "month") {
@@ -225,6 +237,19 @@ function getRangeDates(range) {
   }
 
   return { start, end };
+}
+
+// Year (+ optional month 1-12) takes priority; falls back to the old range names.
+function getPeriodDates(query) {
+  const y = Number(query.year);
+  const m = Number(query.month);
+  if (y) {
+    if (m >= 1 && m <= 12) {
+      return { start: new Date(y, m - 1, 1, 0, 0, 0, 0), end: new Date(y, m, 0, 23, 59, 59, 999) };
+    }
+    return { start: new Date(y, 0, 1, 0, 0, 0, 0), end: new Date(y, 11, 31, 23, 59, 59, 999) };
+  }
+  return getRangeDates(query.range);
 }
 
 function formatSheetDate(date) {
@@ -432,10 +457,10 @@ app.get(
   "/api/bills",
   requireAuth,
   wrap(async (req, res) => {
-    const { range, from, to, location } = req.query;
+    const { range, from, to, location, year } = req.query;
     const filter = { owner: req.ownerId };
-    if (range) {
-      const { start, end } = getRangeDates(range);
+    if (year || range) {
+      const { start, end } = getPeriodDates(req.query);
       filter.date = { $gte: start, $lte: end };
     } else if (from || to) {
       filter.date = {};
@@ -469,9 +494,7 @@ async function nextInvoiceNumber(ownerId, dateStr, type) {
     });
     return `${prefix}/${year}/${String(countThisYear + 1).padStart(4, "0")}`;
   } catch (err) {
-    // Guaranteed fallback — a bill should never be created without an
-    // invoice number, even if the count query above ever fails for some
-    // reason (e.g. a transient DB error).
+    // A bill should never be created without an invoice number.
     console.error("nextInvoiceNumber fallback used:", err.message);
     return `${prefix}/${year}/${Date.now()}`;
   }
@@ -525,10 +548,9 @@ app.get(
   "/api/expenses",
   requireAuth,
   wrap(async (req, res) => {
-    const { range } = req.query;
     const filter = { owner: req.ownerId };
-    if (range) {
-      const { start, end } = getRangeDates(range);
+    if (req.query.year || req.query.range) {
+      const { start, end } = getPeriodDates(req.query);
       filter.date = { $gte: start, $lte: end };
     }
     const expenses = await Expense.find(filter).sort({ date: -1 });
@@ -589,135 +611,111 @@ app.delete(
     res.json({ message: "Partner deleted.", id: partner._id });
   })
 );
+
+/* =========================================================================
+   10B. SPARE PARTS ROUTES
+========================================================================= */
+app.get(
+  "/api/spare-parts",
+  requireAuth,
+  wrap(async (req, res) => {
+    const filter = { owner: req.ownerId };
+    if (req.query.q) {
+      const rx = new RegExp(String(req.query.q).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+      filter.$or = [{ name: rx }, { partNumber: rx }, { supplier: rx }];
+    }
+    res.json(await SparePart.find(filter).sort({ createdAt: -1 }));
+  })
+);
+
+app.post(
+  "/api/spare-parts",
+  requireAuth,
+  wrap(async (req, res) => {
+    const part = await SparePart.create({ ...req.body, owner: req.ownerId });
+    emitUpdate("sparepart:created", part);
+    res.status(201).json(part);
+  })
+);
+
+app.put(
+  "/api/spare-parts/:id",
+  requireAuth,
+  wrap(async (req, res) => {
+    const part = await SparePart.findOneAndUpdate(
+      { _id: req.params.id, owner: req.ownerId },
+      { $set: req.body },
+      { new: true }
+    );
+    if (!part) return res.status(404).json({ message: "Spare part not found." });
+    emitUpdate("sparepart:updated", part);
+    res.json(part);
+  })
+);
+
+app.delete(
+  "/api/spare-parts/:id",
+  requireAuth,
+  wrap(async (req, res) => {
+    const part = await SparePart.findOneAndDelete({ _id: req.params.id, owner: req.ownerId });
+    if (!part) return res.status(404).json({ message: "Spare part not found." });
+    emitUpdate("sparepart:deleted", { id: part._id });
+    res.json({ message: "Spare part deleted.", id: part._id });
+  })
+);
+
 /* =========================================================================
    11. DASHBOARD ANALYTICS
 ======================================================================== */
-
 app.get(
   "/api/dashboard/summary",
   requireAuth,
   wrap(async (req, res) => {
     const range = req.query.range || "month";
-
-    const { start, end } = getRangeDates(range);
-
+    const { start, end } = getPeriodDates({ ...req.query, range });
     const owner = req.ownerId;
 
-    const bills = await Bill.find({
-      owner,
-      date: {
-        $gte: start,
-        $lte: end,
-      },
-    }).sort({ date: -1 });
+    const bills = await Bill.find({ owner, date: { $gte: start, $lte: end } }).sort({ date: -1 });
+    const expenses = await Expense.find({ owner, date: { $gte: start, $lte: end } }).sort({ date: -1 });
 
-    const expenses = await Expense.find({
-      owner,
-      date: {
-        $gte: start,
-        $lte: end,
-      },
-    }).sort({ date: -1 });
+    const totalSales = bills.reduce((sum, bill) => sum + Number(bill.total || 0), 0);
 
-    /* =========================
-       TOTAL SALES
-    ========================= */
+    const grossProfit = bills.reduce((total, bill) => {
+      const billProfit = (bill.items || []).reduce(
+        (sum, item) =>
+          sum + (Number(item.sellingPrice || 0) - Number(item.actualPrice || 0)) * Number(item.qty || 1),
+        0
+      );
+      return total + billProfit;
+    }, 0);
 
-    const totalSales = bills.reduce(
-      (sum, bill) => {
-        return sum + Number(bill.total || 0);
-      },
-      0
-    );
-
-    /* =========================
-       GROSS PROFIT
-    ========================= */
-
-    const grossProfit = bills.reduce(
-      (total, bill) => {
-        const billProfit = (bill.items || []).reduce(
-          (sum, item) => {
-            const profit =
-              (Number(item.sellingPrice || 0) -
-                Number(item.actualPrice || 0)) *
-              Number(item.qty || 1);
-
-            return sum + profit;
-          },
-          0
-        );
-
-        return total + billProfit;
-      },
-      0
-    );
-
-    /* =========================
-       TOTAL EXPENSES
-    ========================= */
-
-    const totalExpenses = expenses.reduce(
-      (sum, expense) => {
-        return sum + Number(expense.amount || 0);
-      },
-      0
-    );
-
-    /* =========================
-       NET PROFIT
-    ========================= */
-
-    const netProfit =
-      grossProfit - totalExpenses;
-
-    /* =========================
-       SALES BY LOCATION
-    ========================= */
+    const totalExpenses = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+    const netProfit = grossProfit - totalExpenses;
 
     const locationMap = {};
-
     bills.forEach((bill) => {
-      const location =
-        bill.location || "Unspecified";
-
-      locationMap[location] =
-        (locationMap[location] || 0) +
-        Number(bill.total || 0);
+      const location = bill.location || "Unspecified";
+      locationMap[location] = (locationMap[location] || 0) + Number(bill.total || 0);
     });
-
     const locations = Object.entries(locationMap)
-      .map(([location, total]) => ({
-        location,
-        total,
-      }))
+      .map(([location, total]) => ({ location, total }))
       .sort((a, b) => b.total - a.total);
-
-    /* =========================
-       RESPONSE
-    ========================= */
 
     res.json({
       range,
-
       billCount: bills.length,
-
       totalSales,
-
       grossProfit,
-
       totalExpenses,
-
       netProfit,
-
       locations,
-
       recentBills: bills.slice(0, 6),
     });
   })
 );
+
 /* =========================================================================
-   11. GOOGLE SHEETS EXPORT
+   12. GOOGLE SHEETS EXPORT
 ========================================================================= */
 async function ensureSheetTab(title) {
   const meta = await sheets.spreadsheets.get({ spreadsheetId: GOOGLE_SHEET_ID });
@@ -729,124 +727,76 @@ async function ensureSheetTab(title) {
     });
   }
 }
+
 async function appendSheetData(title, rows) {
   await ensureSheetTab(title);
 
-  // Check existing data
   const existing = await sheets.spreadsheets.values.get({
     spreadsheetId: GOOGLE_SHEET_ID,
     range: `${title}!A:ZZ`,
   });
-
   const existingRows = existing.data.values || [];
 
-  // If sheet is empty, add headers + data
+  // Empty sheet: write headers + data
   if (existingRows.length === 0) {
     await sheets.spreadsheets.values.update({
       spreadsheetId: GOOGLE_SHEET_ID,
       range: `${title}!A1`,
       valueInputOption: "USER_ENTERED",
-      requestBody: {
-        values: rows,
-      },
+      requestBody: { values: rows },
     });
-
     return;
   }
 
- 
   const dataRows = rows.slice(1);
-
-  if (dataRows.length === 0) {
-    return;
-  }
+  if (dataRows.length === 0) return;
 
   await sheets.spreadsheets.values.append({
     spreadsheetId: GOOGLE_SHEET_ID,
     range: `${title}!A:ZZ`,
     valueInputOption: "USER_ENTERED",
     insertDataOption: "INSERT_ROWS",
-    requestBody: {
-      values: dataRows,
-    },
+    requestBody: { values: dataRows },
   });
 }
-/* =========================================================================
-   11A. COMPLETE GOOGLE SHEET EXPORT
-======================================================================== */
+
 app.post(
   "/api/reports/export-complete",
   requireAuth,
   wrap(async (req, res) => {
     if (!GOOGLE_SHEET_ID) {
-      return res.status(500).json({
-        message: "GOOGLE_SHEET_ID is not configured on the server.",
-      });
+      return res.status(500).json({ message: "GOOGLE_SHEET_ID is not configured on the server." });
     }
 
     const ownerId = req.ownerId;
 
-    const [
-      business,
-      bills,
-      expenses,
-      partners,
-      scooters
-    ] = await Promise.all([
+    const [business, bills, expenses, partners, scooters, spareParts] = await Promise.all([
       Business.findOne({ owner: ownerId }),
       Bill.find({ owner: ownerId }).sort({ date: -1 }),
       Expense.find({ owner: ownerId }).sort({ date: -1 }),
       Partner.find({ owner: ownerId }).sort({ createdAt: 1 }),
       Scooter.find({ owner: ownerId }).sort({ createdAt: -1 }),
+      SparePart.find({ owner: ownerId }).sort({ createdAt: -1 }),
     ]);
 
-    /* ============================================================
-       DASHBOARD
-    ============================================================ */
-
-    const totalSales = bills.reduce(
-      (sum, bill) => sum + Number(bill.total || 0),
-      0
-    );
+    const totalSales = bills.reduce((sum, bill) => sum + Number(bill.total || 0), 0);
 
     const grossProfit = bills.reduce(
       (sum, bill) =>
         sum +
         (bill.items || []).reduce(
           (itemSum, item) =>
-            itemSum +
-            (Number(item.sellingPrice || 0) -
-              Number(item.actualPrice || 0)) *
-              Number(item.qty || 1),
+            itemSum + (Number(item.sellingPrice || 0) - Number(item.actualPrice || 0)) * Number(item.qty || 1),
           0
         ),
       0
     );
 
-    const totalExpenses = expenses.reduce(
-      (sum, expense) =>
-        sum + Number(expense.amount || 0),
-      0
-    );
-
-    const netProfit =
-      grossProfit - totalExpenses;
-
-    /* ============================================================
-       BUSINESS
-    ============================================================ */
+    const totalExpenses = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+    const netProfit = grossProfit - totalExpenses;
 
     const businessRows = [
-      [
-        "Business Name",
-        "Tagline",
-        "Address",
-        "Email",
-        "Phone",
-        "WhatsApp",
-        "GSTIN",
-        "GST Rate"
-      ],
+      ["Business Name", "Tagline", "Address", "Email", "Phone", "WhatsApp", "GSTIN", "GST Rate"],
       [
         business?.name || "",
         business?.tagline || "",
@@ -855,44 +805,15 @@ app.post(
         business?.phone || "",
         business?.whatsapp || "",
         business?.gstin || "",
-        business?.gstRate || 0
-      ]
+        business?.gstRate || 0,
+      ],
     ];
-
-    /* ============================================================
-       DASHBOARD
-    ============================================================ */
-
-    const dashboardRows = [
-      ["Metric", "Value"],
-      ["Total Sales", totalSales],
-      ["Gross Profit", grossProfit],
-      ["Total Expenses", totalExpenses],
-      ["Net Profit", netProfit],
-      ["Total Bills", bills.length],
-      ["Total Scooters", scooters.length],
-      ["Total Partners", partners.length],
-    ];
-
-    /* ============================================================
-       CATALOGUE
-    ============================================================ */
 
     const catalogueRows = [
       [
-        "Scooter Name",
-        "Chassis Number",
-        "Motor Number",
-        "Warranty",
-        "Features",
-        "Battery Info",
-        "Scooter Price",
-        "Battery Price",
-        "Actual Cost Price",
-        "Selling Price",
-        "Stock Status"
+        "Scooter Name", "Chassis Number", "Motor Number", "Warranty", "Features", "Battery Info",
+        "Scooter Price", "Battery Price", "Actual Cost Price", "Selling Price", "Stock Status",
       ],
-
       ...scooters.map((s) => [
         s.name || "",
         s.chassisNo || "",
@@ -905,32 +826,14 @@ app.post(
         Number(s.actualPrice || 0),
         Number(s.sellingPrice || 0),
         s.stockStatus || "",
-      ])
+      ]),
     ];
-
-    /* ============================================================
-       BILLS
-    ============================================================ */
 
     const billRows = [
       [
-        "Invoice Number",
-        "Date",
-        "Customer Name",
-        "Customer Phone",
-        "Customer Address",
-        "Customer Aadhar",
-        "Location",
-        "Bill Type",
-        "Items",
-        "Qty",
-        "Subtotal",
-        "GST Rate",
-        "GST Amount",
-        "Total",
-        "Payment Mode"
+        "Invoice Number", "Date", "Customer Name", "Customer Phone", "Customer Address", "Customer Aadhar",
+        "Location", "Bill Type", "Items", "Qty", "Subtotal", "GST Rate", "GST Amount", "Total", "Payment Mode",
       ],
-
       ...bills.map((b) => [
         b.invoiceNumber || "",
         formatSheetDate(b.date),
@@ -940,46 +843,21 @@ app.post(
         b.customerAadhar || "",
         b.location || "",
         b.type || "",
-        (b.items || [])
-          .map(
-            (item) =>
-              `${item.name || ""} x${item.qty || 1}`
-          )
-          .join(", "),
-        // Total quantity across all items on the bill — this now sits in the
-        // "Qty" column position matching the header row above. Previously
-        // this value was missing here and a qty was tacked onto the END of
-        // the row instead, which shifted Subtotal/GST Rate/GST Amount/Total/
-        // Payment Mode each one column to the left of their own headers.
+        (b.items || []).map((item) => `${item.name || ""} x${item.qty || 1}`).join(", "),
         (b.items || []).reduce((sum, item) => sum + Number(item.qty || 1), 0),
         Number(b.subtotal || 0),
         Number(b.gstRate || 0),
         Number(b.gstAmount || 0),
         Number(b.total || 0),
         b.paymentMode || "",
-      ])
+      ]),
     ];
-
-    /* ============================================================
-       BILL ITEMS
-    ============================================================ */
 
     const billItemRows = [
       [
-        "Invoice Number",
-        "Customer Name",
-        "Scooter",
-        "Chassis Number",
-        "Motor Number",
-        "Battery Info",
-        "Warranty",
-        "Description",
-        "Actual Price",
-        "Selling Price",
-        "Battery Price",
-        "Quantity"
+        "Invoice Number", "Customer Name", "Scooter", "Chassis Number", "Motor Number", "Battery Info",
+        "Warranty", "Description", "Actual Price", "Selling Price", "Battery Price", "Quantity",
       ],
-
       ...bills.flatMap((b) =>
         (b.items || []).map((item) => [
           b.invoiceNumber || "",
@@ -995,23 +873,11 @@ app.post(
           Number(item.batteryPrice || 0),
           Number(item.qty || 1),
         ])
-      )
+      ),
     ];
 
-    /* ============================================================
-       EXPENSES
-    ============================================================ */
-
     const expenseRows = [
-      [
-        "Date",
-        "Name",
-        "Category",
-        "Amount",
-        "Location",
-        "Note"
-      ],
-
+      ["Date", "Name", "Category", "Amount", "Location", "Note"],
       ...expenses.map((e) => [
         formatSheetDate(e.date),
         e.name || "",
@@ -1019,108 +885,73 @@ app.post(
         Number(e.amount || 0),
         e.location || "",
         e.note || "",
-      ])
+      ]),
     ];
-
-    /* ============================================================
-       PARTNERS
-    ============================================================ */
 
     const partnerRows = [
-      [
-        "Name",
-        "Phone",
-        "Share Percentage"
-      ],
-
-      ...partners.map((p) => [
-        p.name || "",
-        p.phone || "",
-        Number(p.sharePercent || 0),
-      ])
+      ["Name", "Phone", "Share Percentage"],
+      ...partners.map((p) => [p.name || "", p.phone || "", Number(p.sharePercent || 0)]),
     ];
-const salesRows = [
-  [
-    "Invoice Number",
-    "Date",
-    "Customer Name",
-    "Customer Phone",
-    "Location",
-    "Items",
-    "Total",
-    "Payment Mode"
-  ],
 
-  ...bills.map((b) => [
-    b.invoiceNumber || "",
-    formatSheetDate(b.date),
-    b.customerName || "",
-    b.customerPhone || "",
-    b.location || "",
-    (b.items || [])
-      .map((item) => `${item.name || ""} x${item.qty || 1}`)
-      .join(", "),
-    Number(b.total || 0),
-    b.paymentMode || "",
-  ])
-];
-const summaryRows = [
-  [
-    "Export Date",
-    "Total Sales",
-    "Gross Profit",
-    "Total Expenses",
-    "Net Profit",
-    "Total Bills",
-    "Total Scooters",
-    "Total Partners"
-  ],
-  [
-    formatSheetDate(new Date()),
-    totalSales,
-    grossProfit,
-    totalExpenses,
-    netProfit,
-    bills.length,
-    scooters.length,
-    partners.length
-  ]
-];
-    /* ============================================================
-       UPDATE ALL SHEETS
-    ============================================================ */
-await appendSheetData("Business", businessRows);
+    const sparePartRows = [
+      ["Part Name", "Part Number", "Supplier", "Quantity", "Cost Price", "Selling Price", "Notes"],
+      ...spareParts.map((p) => [
+        p.name || "",
+        p.partNumber || "",
+        p.supplier || "",
+        Number(p.qty || 0),
+        Number(p.costPrice || 0),
+        Number(p.sellingPrice || 0),
+        p.notes || "",
+      ]),
+    ];
 
-await appendSheetData("Summary", summaryRows);
+    const salesRows = [
+      ["Invoice Number", "Date", "Customer Name", "Customer Phone", "Location", "Items", "Total", "Payment Mode"],
+      ...bills.map((b) => [
+        b.invoiceNumber || "",
+        formatSheetDate(b.date),
+        b.customerName || "",
+        b.customerPhone || "",
+        b.location || "",
+        (b.items || []).map((item) => `${item.name || ""} x${item.qty || 1}`).join(", "),
+        Number(b.total || 0),
+        b.paymentMode || "",
+      ]),
+    ];
 
-await appendSheetData("Catalogue", catalogueRows);
+    const summaryRows = [
+      [
+        "Export Date", "Total Sales", "Gross Profit", "Total Expenses", "Net Profit",
+        "Total Bills", "Total Scooters", "Total Partners",
+      ],
+      [formatSheetDate(new Date()), totalSales, grossProfit, totalExpenses, netProfit, bills.length, scooters.length, partners.length],
+    ];
 
-await appendSheetData("Bills", billRows);
+    await appendSheetData("Business", businessRows);
+    await appendSheetData("Summary", summaryRows);
+    await appendSheetData("Catalogue", catalogueRows);
+    await appendSheetData("Bills", billRows);
+    await appendSheetData("Bill Items", billItemRows);
+    await appendSheetData("Sales", salesRows);
+    await appendSheetData("Expenses", expenseRows);
+    await appendSheetData("Partners", partnerRows);
+    await appendSheetData("Spare Parts", sparePartRows);
 
-await appendSheetData("Bill Items", billItemRows);
-
-await appendSheetData("Sales", salesRows);
-
-await appendSheetData("Expenses", expenseRows);
-
-await appendSheetData("Partners", partnerRows);
     res.json({
       message: "Complete report exported successfully to Google Sheets.",
-      dashboard: {
-        totalSales,
-        grossProfit,
-        totalExpenses,
-        netProfit,
-      },
+      dashboard: { totalSales, grossProfit, totalExpenses, netProfit },
       counts: {
         bills: bills.length,
         scooters: scooters.length,
         expenses: expenses.length,
         partners: partners.length,
+        spareParts: spareParts.length,
       },
     });
   })
 );
+
 /* =========================================================================
    13. ERROR HANDLING
 ========================================================================= */
