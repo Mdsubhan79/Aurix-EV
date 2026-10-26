@@ -239,15 +239,20 @@ function getRangeDates(range) {
   return { start, end };
 }
 
-// Year (+ optional month 1-12) takes priority; falls back to the old range names.
+// Year + fromMonth..toMonth (1-12) = every day from the 1st of fromMonth to the
+// last day of toMonth. Falls back to the old range names if no year is sent.
 function getPeriodDates(query) {
   const y = Number(query.year);
-  const m = Number(query.month);
   if (y) {
-    if (m >= 1 && m <= 12) {
-      return { start: new Date(y, m - 1, 1, 0, 0, 0, 0), end: new Date(y, m, 0, 23, 59, 59, 999) };
-    }
-    return { start: new Date(y, 0, 1, 0, 0, 0, 0), end: new Date(y, 11, 31, 23, 59, 59, 999) };
+    let from = Number(query.fromMonth) || 1;
+    let to = Number(query.toMonth) || 12;
+    from = Math.min(12, Math.max(1, from));
+    to = Math.min(12, Math.max(1, to));
+    if (from > to) [from, to] = [to, from];
+    return {
+      start: new Date(y, from - 1, 1, 0, 0, 0, 0),
+      end: new Date(y, to, 0, 23, 59, 59, 999), // day 0 of next month = last day of `to`
+    };
   }
   return getRangeDates(query.range);
 }
@@ -389,7 +394,7 @@ app.get(
     const { q } = req.query;
     const filter = { owner: req.ownerId };
     if (q) filter.$text = { $search: q };
-    const scooters = await Scooter.find(filter).sort({ createdAt: -1 });
+    const scooters = await Scooter.find(filter).sort({ createdAt: -1 }).lean();
     res.json(scooters);
   })
 );
@@ -468,7 +473,7 @@ app.get(
       if (to) filter.date.$lte = new Date(to);
     }
     if (location) filter.location = location;
-    const bills = await Bill.find(filter).sort({ date: -1 });
+    const bills = await Bill.find(filter).sort({ date: -1 }).lean();
     res.json(bills);
   })
 );
@@ -553,7 +558,7 @@ app.get(
       const { start, end } = getPeriodDates(req.query);
       filter.date = { $gte: start, $lte: end };
     }
-    const expenses = await Expense.find(filter).sort({ date: -1 });
+    const expenses = await Expense.find(filter).sort({ date: -1 }).lean();
     res.json(expenses);
   })
 );
@@ -624,7 +629,7 @@ app.get(
       const rx = new RegExp(String(req.query.q).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
       filter.$or = [{ name: rx }, { partNumber: rx }, { supplier: rx }];
     }
-    res.json(await SparePart.find(filter).sort({ createdAt: -1 }));
+    res.json(await SparePart.find(filter).sort({ createdAt: -1 }).lean());
   })
 );
 
@@ -675,8 +680,11 @@ app.get(
     const { start, end } = getPeriodDates({ ...req.query, range });
     const owner = req.ownerId;
 
-    const bills = await Bill.find({ owner, date: { $gte: start, $lte: end } }).sort({ date: -1 });
-    const expenses = await Expense.find({ owner, date: { $gte: start, $lte: end } }).sort({ date: -1 });
+    // run both queries in parallel, lean = plain objects (much faster)
+    const [bills, expenses] = await Promise.all([
+      Bill.find({ owner, date: { $gte: start, $lte: end } }).sort({ date: -1 }).lean(),
+      Expense.find({ owner, date: { $gte: start, $lte: end } }).select("amount").lean(),
+    ]);
 
     const totalSales = bills.reduce((sum, bill) => sum + Number(bill.total || 0), 0);
 
@@ -979,12 +987,15 @@ async function seedOwnerIfMissing() {
 
 const PORT = process.env.PORT || 5000;
 
+// Start listening immediately (health checks respond fast); Mongoose buffers
+// queries until the DB connection is ready.
+server.listen(PORT, () => console.log(`VoltLine server running on port ${PORT}`));
+
 mongoose
   .connect(process.env.MONGO_URI)
   .then(async () => {
     console.log("MongoDB connected");
     await seedOwnerIfMissing();
-    server.listen(PORT, () => console.log(`VoltLine server running on port ${PORT}`));
   })
   .catch((err) => {
     console.error("MongoDB connection failed:", err.message);
