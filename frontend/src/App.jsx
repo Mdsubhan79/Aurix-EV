@@ -644,7 +644,7 @@ function Dashboard({ setTab }) {
 function QuickAction({ icon: Icon, label, onClick }) {
   return (
     <button onClick={onClick} style={{ ...S.card, cursor: "pointer", display: "flex", alignItems: "center", gap: 10, padding: 16 }}>
-      <div style={{ width: 34, height: 34, borderRadius: 9, background: "#00349b", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ width: 34, height: 34, borderRadius: 9, background: "#1c1e22", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <Icon size={16} color="#C4F135" />
       </div>
       <span style={{ fontSize: 13.5, fontWeight: 600 }}>{label}</span>
