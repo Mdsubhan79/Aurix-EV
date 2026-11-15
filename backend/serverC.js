@@ -140,6 +140,11 @@ const billSchema = new mongoose.Schema(
     gstAmount: { type: Number, default: 0 },
     total: { type: Number, default: 0 },
     paymentMode: { type: String, default: "Cash" },
+    // Warranty printed on this invoice. No schema default on purpose: old bills
+    // (field missing) fall back to 12 / 18 months in the frontend.
+    motorWarranty: { type: String },
+    batteryWarranty: { type: String },
+    warrantyNote: { type: String },
   },
   { timestamps: true }
 );

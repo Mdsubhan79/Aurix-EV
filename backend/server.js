@@ -145,6 +145,7 @@ const billSchema = new mongoose.Schema(
     motorWarranty: { type: String },
     batteryWarranty: { type: String },
     warrantyNote: { type: String },
+    freeService: { type: String }, // e.g. "6 Months" of free servicing
   },
   { timestamps: true }
 );
@@ -468,8 +469,9 @@ app.get(
   "/api/bills",
   requireAuth,
   wrap(async (req, res) => {
-    const { range, from, to, location, year } = req.query;
+    const { range, from, to, location, year, type } = req.query;
     const filter = { owner: req.ownerId };
+    if (type) filter.type = type;
     if (year || range) {
       const { start, end } = getPeriodDates(req.query);
       filter.date = { $gte: start, $lte: end };
