@@ -8,7 +8,7 @@ import {
   Zap, LayoutDashboard, Bike, Receipt, TrendingUp, Wallet, Users, Settings as SettingsIcon,
   Plus, X, Trash2, Edit2, Search, Download, Share2, ChevronRight, ChevronDown, IndianRupee, MapPin,
   Image as ImageIcon, Upload, Check, ArrowUpRight, ArrowDownRight, LogOut, Eye, EyeOff,
-  MoreHorizontal, Wrench, Boxes, MessageCircle, FileText
+  MoreHorizontal, Wrench, Boxes, MessageCircle, FileText, ShieldCheck
 } from "lucide-react";
 
 /* =========================================================================
@@ -412,6 +412,7 @@ const NAV = [
   { id: "expenses", label: "Expenses", icon: Wallet },
   { id: "partners", label: "Partners", icon: Users },
   { id: "spares", label: "Spare Parts", icon: Wrench },
+  { id: "warranty", label: "Warranty", icon: ShieldCheck },
   { id: "settings", label: "Settings", icon: SettingsIcon },
 ];
 
@@ -440,6 +441,7 @@ function AppShell({ owner, business, setBusiness, tab, setTab, onLogout }) {
           {tab === "expenses" && <Expenses business={business} />}
           {tab === "partners" && <Partners business={business} />}
           {tab === "spares" && <SpareParts />}
+          {tab === "warranty" && <WarrantyTracker business={business} />}
           {tab === "settings" && <SettingsTab business={business} setBusiness={setBusiness} />}
         </div>
       </div>
@@ -480,8 +482,8 @@ function Sidebar({ tab, setTab, business, onLogout }) {
 function BottomNav({ tab, setTab }) {
   const [showMore, setShowMore] = useState(false);
   const mainNav = NAV.filter((n) => ["dashboard", "catalogue", "billing", "sales", "expenses"].includes(n.id));
-  const moreNav = NAV.filter((n) => ["partners", "spares", "settings"].includes(n.id));
-  const moreActive = showMore || ["partners", "spares", "settings"].includes(tab);
+  const moreNav = NAV.filter((n) => ["partners", "spares", "warranty", "settings"].includes(n.id));
+  const moreActive = showMore || ["partners", "spares", "warranty", "settings"].includes(tab);
 
   const selectTab = (id) => {
     setTab(id);
@@ -644,7 +646,7 @@ function Dashboard({ setTab }) {
 function QuickAction({ icon: Icon, label, onClick }) {
   return (
     <button onClick={onClick} style={{ ...S.card, cursor: "pointer", display: "flex", alignItems: "center", gap: 10, padding: 16 }}>
-      <div style={{ width: 34, height: 34, borderRadius: 9, background: "#1c1e22", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ width: 34, height: 34, borderRadius: 9, background: "#00349b", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <Icon size={16} color="#C4F135" />
       </div>
       <span style={{ fontSize: 13.5, fontWeight: 600 }}>{label}</span>
@@ -1630,6 +1632,237 @@ function SpareParts() {
             <Check size={16} /> Save spare part
           </button>
         </Modal>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================================
+   13C. WARRANTY & FREE SERVICE TRACKER (sale bills)
+========================================================================= */
+const DAY_MS = 86400000;
+const startOfDay = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+
+function addMonthsClamped(date, n) {
+  const d = startOfDay(date);
+  const day = d.getDate();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + n);
+  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(day, last));
+  return d;
+}
+
+// "12 Months", "1 Year", "2 years 6 months", "45 days", "6" (= months) -> { months, days }
+// "No warranty" / empty / no number -> null
+function parseDuration(text) {
+  const t = String(text || "").toLowerCase();
+  if (!/\d/.test(t)) return null;
+  let months = 0, days = 0, found = false, m;
+  const re = /(\d+(?:\.\d+)?)\s*(years?|yrs?|months?|mos?|weeks?|days?)?/g;
+  while ((m = re.exec(t))) {
+    const n = parseFloat(m[1]);
+    const u = m[2] || "month";
+    found = true;
+    if (u.startsWith("y")) months += Math.round(n * 12);
+    else if (u.startsWith("w")) days += Math.round(n * 7);
+    else if (u.startsWith("d")) days += Math.round(n);
+    else months += Math.round(n);
+  }
+  return found && (months || days) ? { months, days } : null;
+}
+
+// "3 months 12 days" between two dates (from <= to)
+function spanLabel(from, to) {
+  let months = (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth());
+  if (addMonthsClamped(from, months) > to) months -= 1;
+  const days = Math.round((to - addMonthsClamped(from, months)) / DAY_MS);
+  const parts = [];
+  if (months > 0) parts.push(`${months} ${months === 1 ? "month" : "months"}`);
+  if (days > 0 || parts.length === 0) parts.push(`${days} ${days === 1 ? "day" : "days"}`);
+  return parts.join(" ");
+}
+
+function coverage(text, start) {
+  const raw = String(text || "").trim();
+  const dur = parseDuration(raw);
+  if (!dur) return { raw, status: "none" };
+  const begin = startOfDay(start);
+  const end = addMonthsClamped(begin, dur.months);
+  end.setDate(end.getDate() + dur.days);
+  const today = startOfDay(new Date());
+  const daysLeft = Math.round((end - today) / DAY_MS);
+  const progress = Math.min(1, Math.max(0, (today - begin) / Math.max(1, end - begin)));
+  const status = daysLeft < 0 ? "expired" : daysLeft <= 30 ? "soon" : "active";
+  const remaining =
+    daysLeft < 0 ? `Expired ${spanLabel(end, today)} ago`
+    : daysLeft === 0 ? "Ends today"
+    : `${spanLabel(today, end)} left`;
+  return { raw, end, daysLeft, progress, status, remaining };
+}
+
+const COVER_COLOR = { active: "#C4F135", soon: "#FFB020", expired: "#FF6B6B", none: "#5A616F" };
+const COVER_TAG = { active: "Active", soon: "Ending soon", expired: "Expired", none: "Not given" };
+
+function WarrantyTracker({ business }) {
+  const [bills, setBills] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState("all");
+
+  const load = useCallback(() => {
+    setLoading(true);
+    api.get("/bills", { params: { type: "sale" } })
+      .then((res) => setBills(Array.isArray(res.data) ? res.data : []))
+      .catch(() => setBills([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const refresh = () => load();
+    const events = ["bill:created", "bill:updated", "bill:deleted"];
+    events.forEach((ev) => socket.on(ev, refresh));
+    return () => events.forEach((ev) => socket.off(ev, refresh));
+  }, [load]);
+
+  const rows = useMemo(
+    () => bills.map((b) => {
+      const covers = [
+        { key: "motor", label: "Motor, Controller & Charger", ...coverage(b.motorWarranty ?? "12 Months", b.date) },
+        { key: "battery", label: "Battery", ...coverage(b.batteryWarranty ?? "18 Months", b.date) },
+        { key: "service", label: "Free service", ...coverage(b.freeService, b.date) },
+      ];
+      const given = covers.filter((c) => c.status !== "none");
+      return {
+        bill: b,
+        covers,
+        anyActive: given.some((c) => c.status === "active" || c.status === "soon"),
+        anySoon: given.some((c) => c.status === "soon"),
+        allExpired: given.length > 0 && given.every((c) => c.status === "expired"),
+      };
+    }),
+    [bills]
+  );
+
+  const counts = {
+    all: rows.length,
+    active: rows.filter((r) => r.anyActive).length,
+    soon: rows.filter((r) => r.anySoon).length,
+    expired: rows.filter((r) => r.allExpired).length,
+  };
+
+  const q = query.trim().toLowerCase();
+  const shown = rows.filter((r) => {
+    if (filter === "active" && !r.anyActive) return false;
+    if (filter === "soon" && !r.anySoon) return false;
+    if (filter === "expired" && !r.allExpired) return false;
+    if (!q) return true;
+    const b = r.bill;
+    const hay = [
+      b.customerName, b.customerPhone, b.invoiceNumber,
+      ...(b.items || []).flatMap((it) => [it.name, it.chassisNo, it.motorNo]),
+    ].join(" ").toLowerCase();
+    return hay.includes(q);
+  });
+
+  const shareStatus = (r) => {
+    const b = r.bill;
+    const names = (b.items || []).map((it) => it.name).filter(Boolean).join(", ") || "scooter";
+    let msg = `Hi ${b.customerName || "there"}, here is the warranty & service status for your *${names}*`;
+    msg += ` (${b.invoiceNumber || "invoice"}, bought ${fmtDate(b.date)}) from ${business?.name || "us"}:\n\n`;
+    r.covers.forEach((c) => {
+      if (c.status === "none") return;
+      msg += `*${c.label}:* ${c.raw} — ends ${fmtDate(c.end)} (${c.remaining})\n`;
+    });
+    msg += `\nFor service or any help, call ${business?.phone || "us"}.`;
+    const phone = (b.customerPhone || "").replace(/\D/g, "");
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, "_blank");
+  };
+
+  const FILTERS = [
+    { id: "all", label: "All" },
+    { id: "active", label: "Active" },
+    { id: "soon", label: "Ending soon" },
+    { id: "expired", label: "Expired" },
+  ];
+
+  return (
+    <div>
+      <div style={S.statGrid}>
+        <StatCard icon={FileText} label="Sale bills" value={String(counts.all)} accent="#8B93A1" />
+        <StatCard icon={ShieldCheck} label="Under warranty / service" value={String(counts.active)} accent="#C4F135" />
+        <StatCard icon={ShieldCheck} label="Ending within 30 days" value={String(counts.soon)} accent="#FFB020" />
+        <StatCard icon={ShieldCheck} label="All expired" value={String(counts.expired)} accent="#FF6B6B" />
+      </div>
+
+      <div style={{ display: "flex", gap: 10, margin: "16px 0 10px", flexWrap: "wrap" }}>
+        <div style={{ ...S.searchBox, flex: 1, minWidth: 200 }}>
+          <Search size={15} color="#5A616F" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search customer, phone, invoice, chassis, motor no." style={S.searchInput} />
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
+        {FILTERS.map((f) => (
+          <button key={f.id} onClick={() => setFilter(f.id)} style={{
+            padding: "7px 14px", borderRadius: 20, cursor: "pointer", fontSize: 12.5, fontWeight: 600,
+            border: "1px solid " + (filter === f.id ? "#C4F135" : "#2A2F3A"),
+            background: filter === f.id ? "rgba(196,241,53,0.1)" : "transparent",
+            color: filter === f.id ? "#C4F135" : "#8B93A1",
+          }}>{f.label} · {counts[f.id]}</button>
+        ))}
+      </div>
+
+      {loading ? <Empty text="Loading sale bills…" /> : shown.length === 0 ? <Empty text="No matching sale bills." /> : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {shown.map((r) => {
+            const b = r.bill;
+            const first = (b.items || [])[0] || {};
+            return (
+              <div key={b._id} style={S.card}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 15 }}>{b.customerName || "Walk-in"}</div>
+                    <div style={{ color: "#5A616F", fontSize: 11.5, marginTop: 2 }}>
+                      {b.customerPhone || "No phone"} · {b.invoiceNumber || "—"} · Bought {fmtDate(b.date)}
+                    </div>
+                    <div style={{ color: "#8B93A1", fontSize: 12, marginTop: 4 }}>
+                      {(b.items || []).map((it) => it.name).filter(Boolean).join(", ") || "—"}
+                      {first.chassisNo ? <span style={{ fontFamily: "'JetBrains Mono',monospace", color: "#5A616F" }}> · Chassis {first.chassisNo}</span> : null}
+                    </div>
+                  </div>
+                  <button onClick={() => shareStatus(r)} style={{ ...S.ghostBtnSm, flex: "none", alignSelf: "flex-start", background: "#25D366", color: "#fff", padding: "8px 12px" }}>
+                    <MessageCircle size={14} /> Send status
+                  </button>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 10 }}>
+                  {r.covers.map((c) => (
+                    <div key={c.key} style={{ background: "#12151A", border: "1px solid #232833", borderRadius: 10, padding: "10px 12px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                        <div style={{ color: "#8B93A1", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4 }}>{c.label}</div>
+                        <span style={{ fontSize: 10.5, fontWeight: 700, padding: "2px 8px", borderRadius: 20, whiteSpace: "nowrap", color: COVER_COLOR[c.status], background: COVER_COLOR[c.status] + "1f" }}>
+                          {COVER_TAG[c.status]}
+                        </span>
+                      </div>
+                      {c.status === "none" ? (
+                        <div style={{ color: "#5A616F", fontSize: 12.5, marginTop: 8 }}>{c.raw || "—"}</div>
+                      ) : (
+                        <>
+                          <div style={{ fontWeight: 700, fontSize: 14, marginTop: 8, color: COVER_COLOR[c.status] }}>{c.remaining}</div>
+                          <div style={{ color: "#5A616F", fontSize: 11.5, marginTop: 2 }}>{c.raw} · ends {fmtDate(c.end)}</div>
+                          <div style={{ height: 5, background: "#1E2430", borderRadius: 5, marginTop: 8, overflow: "hidden" }}>
+                            <div style={{ width: `${Math.round(c.progress * 100)}%`, height: "100%", background: COVER_COLOR[c.status] }} />
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );

@@ -40,6 +40,7 @@ function emptyDraft(business) {
     motorWarranty: "12 Months",
     batteryWarranty: "18 Months",
     warrantyNote: "",
+    freeService: "",
   };
 }
 
@@ -132,6 +133,8 @@ function warrantyLines(bill) {
   const lines = [];
   if (motor) lines.push(`Motor, Controller & Charger Warranty: ${motor}`);
   if (battery) lines.push(`Battery Warranty: ${battery}`);
+  const freeService = String(bill.freeService || "").trim();
+  if (freeService) lines.push(`Free Service: ${freeService}`);
   if (note) lines.push(note);
   return lines;
 }
@@ -372,6 +375,7 @@ export default function Billing({ business }) {
       motorWarranty: bill.motorWarranty ?? "12 Months",
       batteryWarranty: bill.batteryWarranty ?? "18 Months",
       warrantyNote: bill.warrantyNote || "",
+      freeService: bill.freeService || "",
     });
     setEditingId(bill._id);
     // parts already on this bill were taken out of stock earlier, so they stay available while editing
@@ -476,6 +480,7 @@ export default function Billing({ business }) {
     motorWarranty: draft.motorWarranty.trim(),
     batteryWarranty: draft.batteryWarranty.trim(),
     warrantyNote: draft.warrantyNote.trim(),
+    freeService: draft.freeService.trim(),
   });
 
   const removeSoldScootersFromCatalogue = async (items) => {
@@ -843,6 +848,10 @@ export default function Billing({ business }) {
               <div style={{ flex: 1, minWidth: 160 }}>
                 <label style={S.fieldLabel}>Battery</label>
                 <input list="warranty-options" value={draft.batteryWarranty} onChange={(e) => setDraft((d) => ({ ...d, batteryWarranty: e.target.value }))} placeholder="e.g. 18 Months" style={S.input} />
+              </div>
+              <div style={{ flex: 1, minWidth: 160 }}>
+                <label style={S.fieldLabel}>Free service period</label>
+                <input list="warranty-options" value={draft.freeService} onChange={(e) => setDraft((d) => ({ ...d, freeService: e.target.value }))} placeholder="e.g. 6 Months" style={S.input} />
               </div>
             </div>
             <div style={{ marginTop: 10 }}>

@@ -5,7 +5,7 @@ import {
   Plus, Trash2, RefreshCw, ArrowLeft, Eye, Pencil, Download, MessageCircle,
   Printer, Calculator, Search, X, Check
 } from "lucide-react";
-import { api, socket, S, Field, Modal, Empty, inr, fmtDate, todayISO, PeriodPicker, defaultPeriod, periodParams } from "./App";
+import { api, socket, S, Field, Modal, Empty, inr, fmtDate, todayISO, PeriodPicker, defaultPeriod, periodParams } from "./AppC";
 
 const VEHICLE_SPEC_FIELDS = [
   ["model", "Model"],
@@ -37,6 +37,9 @@ function emptyDraft(business) {
     items: [],
     gstRate: business?.gstRate ?? 18,
     paymentMode: "Cash",
+    motorWarranty: "12 Months",
+    batteryWarranty: "18 Months",
+    warrantyNote: "",
   };
 }
 
@@ -117,6 +120,20 @@ function usePrintStyles() {
     `;
     document.head.appendChild(style);
   }, []);
+}
+
+const WARRANTY_OPTIONS = ["3 Months", "6 Months", "9 Months", "12 Months", "18 Months", "24 Months", "36 Months", "No warranty"];
+
+// Warranty lines for a bill. Old bills (field missing) keep the previous 12 / 18 month wording.
+function warrantyLines(bill) {
+  const motor = String(bill.motorWarranty ?? "12 Months").trim();
+  const battery = String(bill.batteryWarranty ?? "18 Months").trim();
+  const note = String(bill.warrantyNote || "").trim();
+  const lines = [];
+  if (motor) lines.push(`Motor, Controller & Charger Warranty: ${motor}`);
+  if (battery) lines.push(`Battery Warranty: ${battery}`);
+  if (note) lines.push(note);
+  return lines;
 }
 
 function InvoiceCard({ bill, business, innerRef, forPrint }) {
@@ -245,12 +262,12 @@ function InvoiceCard({ bill, business, innerRef, forPrint }) {
           </div>
         </div>
 
-        <div style={{ border: "1px solid #f0d98c", background: "#fffbea", borderRadius: 8, padding: 14, marginTop: 20, fontSize: 12.5 }}>
-          <b>Warranty Information</b>
-          <div style={{ marginTop: 6, whiteSpace: "pre-line" }}>
-            Motor, Controller & Charger Warranty: 12 Months{"\n"}Battery Warranty: 18 Months
+        {warrantyLines(bill).length > 0 && (
+          <div style={{ border: "1px solid #f0d98c", background: "#fffbea", borderRadius: 8, padding: 14, marginTop: 20, fontSize: 12.5 }}>
+            <b>Warranty Information</b>
+            <div style={{ marginTop: 6, whiteSpace: "pre-line" }}>{warrantyLines(bill).join("\n")}</div>
           </div>
-        </div>
+        )}
       </div>
 
       <div style={{ marginTop: "auto", paddingTop: 24, textAlign: "center", fontSize: 12.5, color: "#555" }}>
@@ -352,6 +369,9 @@ export default function Billing({ business }) {
       items: (bill.items || []).map((it) => ({ ...emptyItem(), ...it })),
       gstRate: bill.gstRate ?? business?.gstRate ?? 18,
       paymentMode: bill.paymentMode || "Cash",
+      motorWarranty: bill.motorWarranty ?? "12 Months",
+      batteryWarranty: bill.batteryWarranty ?? "18 Months",
+      warrantyNote: bill.warrantyNote || "",
     });
     setEditingId(bill._id);
     // parts already on this bill were taken out of stock earlier, so they stay available while editing
@@ -453,6 +473,9 @@ export default function Billing({ business }) {
     items: draft.items,
     gstRate: Number(draft.gstRate) || 0,
     paymentMode: draft.paymentMode,
+    motorWarranty: draft.motorWarranty.trim(),
+    batteryWarranty: draft.batteryWarranty.trim(),
+    warrantyNote: draft.warrantyNote.trim(),
   });
 
   const removeSoldScootersFromCatalogue = async (items) => {
@@ -538,6 +561,8 @@ export default function Billing({ business }) {
     text += `\n*Payment:* ${(bill.paymentMode || "Cash").toUpperCase()}\n`;
     text += `Subtotal: ${inr(bill.subtotal)}\nGST (${bill.gstRate}%): ${inr(bill.gstAmount)}\n*TOTAL: ${inr(bill.total)}*\n`;
     if (bill.serviceDesc) text += `\n*Notes*\n${bill.serviceDesc}\n`;
+    const wl = warrantyLines(bill);
+    if (wl.length) text += `\n*Warranty*\n${wl.join("\n")}\n`;
     text += `\nThank you for your business! 🙏`;
 
     const phone = (bill.customerPhone || "").replace(/\D/g, "");
@@ -667,7 +692,16 @@ export default function Billing({ business }) {
               <Field label="Date" type="date" value={draft.date} onChange={(v) => setDraft((d) => ({ ...d, date: v }))} />
               <div style={{ flex: 1 }}>
                 <label style={S.fieldLabel}>Bill type</label>
-                <select value={draft.type} onChange={(e) => setDraft((d) => ({ ...d, type: e.target.value }))} style={S.input}>
+                <select value={draft.type} onChange={(e) => {
+                  const t = e.target.value;
+                  setDraft((d) => {
+                    const isDefault = d.motorWarranty === "12 Months" && d.batteryWarranty === "18 Months";
+                    const isEmpty = !d.motorWarranty && !d.batteryWarranty;
+                    const w = t !== "sale" && isDefault ? { motorWarranty: "", batteryWarranty: "" }
+                      : t === "sale" && isEmpty ? { motorWarranty: "12 Months", batteryWarranty: "18 Months" } : {};
+                    return { ...d, type: t, ...w };
+                  });
+                }} style={S.input}>
                   <option value="sale">Sale</option><option value="service">Service</option><option value="repair">Repair</option>
                 </select>
               </div>
@@ -796,6 +830,28 @@ export default function Billing({ business }) {
               )}
             </div>
           ))}
+          <div style={{ marginTop: 18, borderTop: "1px solid #2A2F3A", paddingTop: 14 }}>
+            <div style={S.cardTitle}>🛡️ Warranty (printed on this invoice)</div>
+            <datalist id="warranty-options">
+              {WARRANTY_OPTIONS.map((o) => <option key={o} value={o} />)}
+            </datalist>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
+              <div style={{ flex: 1, minWidth: 160 }}>
+                <label style={S.fieldLabel}>Motor, Controller & Charger</label>
+                <input list="warranty-options" value={draft.motorWarranty} onChange={(e) => setDraft((d) => ({ ...d, motorWarranty: e.target.value }))} placeholder="e.g. 12 Months" style={S.input} />
+              </div>
+              <div style={{ flex: 1, minWidth: 160 }}>
+                <label style={S.fieldLabel}>Battery</label>
+                <input list="warranty-options" value={draft.batteryWarranty} onChange={(e) => setDraft((d) => ({ ...d, batteryWarranty: e.target.value }))} placeholder="e.g. 18 Months" style={S.input} />
+              </div>
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <label style={S.fieldLabel}>Extra warranty note (optional)</label>
+              <textarea value={draft.warrantyNote} onChange={(e) => setDraft((d) => ({ ...d, warrantyNote: e.target.value }))} placeholder="e.g. Free service for 6 months, tyres not covered" rows={2} style={S.input} />
+            </div>
+            <div style={{ fontSize: 10.5, color: "#5A616F", marginTop: 4 }}>Type any period or pick one. Leave a box empty to hide that line on the invoice.</div>
+          </div>
+
 
           <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
             <div style={{ flex: 1 }}>
