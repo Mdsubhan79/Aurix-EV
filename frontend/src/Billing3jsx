@@ -17,7 +17,7 @@ const VEHICLE_SPEC_FIELDS = [
 
 function emptyItem() {
   return {
-    scooter: null, name: "", description: "", chassisNo: "", motorNo: "", warranty: "",
+    scooter: null, sparePart: null, name: "", description: "", chassisNo: "", motorNo: "", warranty: "",
     model: "", color: "", scooterPrice: 0, batteryType: "", batteryPrice: 0, motorPower: "",
     wheelSize: "",
     actualPrice: 0, sellingPrice: 0, qty: 1,
@@ -285,6 +285,8 @@ export default function Billing({ business }) {
   const [editingId, setEditingId] = useState(null);
   const [viewing, setViewing] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [spareParts, setSpareParts] = useState([]);   // stock from the Spare Parts tab
+  const [origSpare, setOrigSpare] = useState({});       // qty of each part already on the bill being edited
 
   const loadBills = useCallback(
     () => api.get("/bills", { params: periodParams(period) }).then((res) => setBills(res.data)),
@@ -292,6 +294,18 @@ export default function Billing({ business }) {
   );
 
   const loadScooters = useCallback(() => api.get("/scooters").then((res) => setScooters(res.data)), []);
+
+  const loadSpareParts = useCallback(
+    () => api.get("/spare-parts").then((res) => setSpareParts(Array.isArray(res.data) ? res.data : [])).catch(() => {}),
+    []
+  );
+  useEffect(() => { loadSpareParts(); }, [loadSpareParts]);
+  useEffect(() => {
+    const refresh = () => loadSpareParts();
+    const events = ["sparepart:created", "sparepart:updated", "sparepart:deleted"];
+    events.forEach((ev) => socket.on(ev, refresh));
+    return () => events.forEach((ev) => socket.off(ev, refresh));
+  }, [loadSpareParts]);
 
   // bills reload when the year changes; scooters only load once
   useEffect(() => {
@@ -323,7 +337,7 @@ export default function Billing({ business }) {
   const totals = useMemo(() => computeTotals(draft.items, draft.gstRate), [draft.items, draft.gstRate]);
 
   /* ----------------------------- actions ----------------------------- */
-  const openCreate = () => { setDraft(emptyDraft(business)); setEditingId(null); setMode("create"); };
+  const openCreate = () => { setDraft(emptyDraft(business)); setEditingId(null); setOrigSpare({}); loadSpareParts(); setMode("create"); };
 
   const openEdit = (bill) => {
     setDraft({
@@ -340,6 +354,11 @@ export default function Billing({ business }) {
       paymentMode: bill.paymentMode || "Cash",
     });
     setEditingId(bill._id);
+    // parts already on this bill were taken out of stock earlier, so they stay available while editing
+    const orig = {};
+    (bill.items || []).forEach((it) => { if (it.sparePart) orig[it.sparePart] = (orig[it.sparePart] || 0) + Number(it.qty || 0); });
+    setOrigSpare(orig);
+    loadSpareParts();
     setMode("edit"); // internal state switch only, never a URL route, so this can't 404
   };
 
@@ -361,6 +380,56 @@ export default function Billing({ business }) {
       }],
     }));
   };
+  /* ---------------- spare parts (repair bills) ---------------- */
+  // how many units of this part can still go on the bill (stock + what this bill already holds - other lines)
+  const availableFor = (it, idx) => {
+    const part = spareParts.find((p) => p._id === it.sparePart);
+    if (!part) return 9999;
+    const others = draft.items.reduce((sum, x, i) => (i !== idx && x.sparePart === it.sparePart ? sum + Number(x.qty || 0) : sum), 0);
+    return Math.max(0, Number(part.qty || 0) + (origSpare[it.sparePart] || 0) - others);
+  };
+
+  const leftInStock = (part) => {
+    const used = draft.items.reduce((sum, x) => (x.sparePart === part._id ? sum + Number(x.qty || 0) : sum), 0);
+    return Number(part.qty || 0) + (origSpare[part._id] || 0) - used;
+  };
+
+  const addSparePart = (partId) => {
+    const part = spareParts.find((p) => p._id === partId);
+    if (!part) return;
+    const existingIdx = draft.items.findIndex((it) => it.sparePart === partId);
+    if (existingIdx >= 0) {
+      const it = draft.items[existingIdx];
+      const max = availableFor(it, existingIdx);
+      if (Number(it.qty || 1) >= max) return showToast(`Only ${max} in stock`, "error");
+      updateItem(existingIdx, "qty", Number(it.qty || 1) + 1);
+      return;
+    }
+    if (leftInStock(part) <= 0) return showToast("This part is out of stock", "error");
+    setDraft((d) => ({
+      ...d,
+      items: [...d.items, {
+        ...emptyItem(),
+        sparePart: part._id,
+        name: part.name,
+        description: part.partNumber ? `Part # ${part.partNumber}` : "",
+        actualPrice: Number(part.costPrice) || 0,
+        sellingPrice: Number(part.sellingPrice) || 0,
+        qty: 1,
+      }],
+    }));
+  };
+
+  const setQty = (idx, raw) => {
+    const it = draft.items[idx];
+    let n = Math.max(1, Math.floor(Number(raw)) || 1);
+    if (it.sparePart) {
+      const max = availableFor(it, idx);
+      if (n > max) { n = Math.max(1, max); showToast(`Only ${max} in stock`, "error"); }
+    }
+    updateItem(idx, "qty", n);
+  };
+
   const removeItem = (idx) => setDraft((d) => ({ ...d, items: d.items.filter((_, i) => i !== idx) }));
   const updateItem = (idx, field, value) => setDraft((d) => ({
     ...d,
@@ -407,6 +476,11 @@ export default function Billing({ business }) {
       showToast("Every item needs a name and a price", "error");
       return;
     }
+    const overIdx = draft.items.findIndex((it, i) => it.sparePart && Number(it.qty || 1) > availableFor(it, i));
+    if (overIdx >= 0) {
+      showToast(`Not enough stock for ${draft.items[overIdx].name}`, "error");
+      return;
+    }
     setSaving(true);
     try {
       const payload = buildPayload();
@@ -422,6 +496,7 @@ export default function Billing({ business }) {
       setViewing(res.data);
       setMode("view");
       loadBills();
+      loadSpareParts();
     } catch (err) {
       showToast(err.response?.data?.message || "Failed to save bill", "error");
     } finally {
@@ -611,8 +686,20 @@ export default function Billing({ business }) {
                 {scooters.map((s) => <option key={s._id} value={s._id}>{s.name} — {inr(s.scooterPrice)}</option>)}
               </select>
             )}
+            {draft.type === "repair" && (
+              <select onChange={(e) => { if (e.target.value) { addSparePart(e.target.value); e.target.value = ""; } }} style={{ ...S.input, flex: 1, minWidth: 200 }} defaultValue="">
+                <option value="" disabled>
+                  {spareParts.filter((p) => leftInStock(p) > 0).length === 0 ? "No spare parts in stock" : "Add spare part from stock…"}
+                </option>
+                {spareParts.filter((p) => leftInStock(p) > 0).map((p) => (
+                  <option key={p._id} value={p._id}>
+                    {p.name}{p.partNumber ? ` (${p.partNumber})` : ""} — {leftInStock(p)} in stock — {inr(p.sellingPrice)}
+                  </option>
+                ))}
+              </select>
+            )}
             {draft.type !== "sale" && (
-              <button type="button" onClick={addServiceCharge} style={S.ghostBtn}><Plus size={14} /> Add {draft.type} item</button>
+              <button type="button" onClick={addServiceCharge} style={S.ghostBtn}><Plus size={14} /> Add {draft.type === "repair" ? "labour / other" : draft.type} item</button>
             )}
           </div>
 
@@ -637,7 +724,7 @@ export default function Billing({ business }) {
                   <input value={it.name} onChange={(e) => updateItem(idx, "name", e.target.value)} placeholder={draft.type === "sale" ? "Item name *" : `${draft.type === "repair" ? "Repair" : "Service"} name *`} style={S.input} />
                 </div>
                 <div style={{ width: 70 }}>
-                  <input type="number" min="1" value={it.qty} onChange={(e) => updateItem(idx, "qty", Number(e.target.value) || 1)} placeholder="Qty" style={S.input} />
+                  <input type="number" min="1" value={it.qty} onChange={(e) => setQty(idx, e.target.value)} max={it.sparePart ? availableFor(it, idx) : undefined} placeholder="Qty" style={S.input} />
                 </div>
               </div>
               {draft.type === "sale" && (
@@ -695,6 +782,12 @@ export default function Billing({ business }) {
                 </div>
                 <div style={{ fontSize: 10.5, color: "#5A616F", marginTop: 4 }}>The bill amount for this item is Selling price × Qty.</div>
               </div>
+
+              {it.sparePart && (
+                <div style={{ marginTop: 8, fontSize: 11, color: "#8FAE2A" }}>
+                  Spare part · {availableFor(it, idx)} available. Stock reduces by {it.qty || 1} when the bill is saved.
+                </div>
+              )}
 
               {it.scooter && (
                 <div style={{ marginTop: 8, fontSize: 11, color: "#8FAE2A" }}>
