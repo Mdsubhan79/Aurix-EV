@@ -98,6 +98,7 @@ const Scooter = mongoose.model("Scooter", scooterSchema);
 const billItemSchema = new mongoose.Schema(
   {
     scooter: { type: mongoose.Schema.Types.ObjectId, ref: "Scooter" },
+    sparePart: { type: mongoose.Schema.Types.ObjectId, ref: "SparePart" }, // repair bills: stock is deducted
     name: String,
     description: { type: String, default: "" },
     chassisNo: { type: String, default: "" },
@@ -505,6 +506,47 @@ async function nextInvoiceNumber(ownerId, dateStr, type) {
   }
 }
 
+/* ---- spare-part stock (repair bills) ---- */
+function sparePartLines(items) {
+  const map = {};
+  (items || []).forEach((it) => {
+    if (!it || !it.sparePart) return;
+    const id = String(it.sparePart);
+    map[id] = (map[id] || 0) + Math.max(0, Number(it.qty || 0));
+  });
+  return Object.entries(map).map(([id, qty]) => ({ id, qty })).filter((l) => l.qty > 0);
+}
+
+async function restoreSpareStock(ownerId, lines) {
+  for (const l of lines) {
+    await SparePart.updateOne({ _id: l.id, owner: ownerId }, { $inc: { qty: l.qty } });
+  }
+}
+
+// Takes stock out atomically; if any part is short, puts back what it already took and throws.
+async function reserveSpareStock(ownerId, items) {
+  const lines = sparePartLines(items);
+  const done = [];
+  for (const l of lines) {
+    const hit = await SparePart.findOneAndUpdate(
+      { _id: l.id, owner: ownerId, qty: { $gte: l.qty } },
+      { $inc: { qty: -l.qty } },
+      { new: true }
+    );
+    if (!hit) {
+      await restoreSpareStock(ownerId, done);
+      const part = await SparePart.findOne({ _id: l.id, owner: ownerId }).lean();
+      const err = new Error(
+        part ? `Not enough stock for "${part.name}" (only ${part.qty} left).` : "A spare part on this bill no longer exists."
+      );
+      err.statusCode = 400;
+      throw err;
+    }
+    done.push(l);
+  }
+  return done;
+}
+
 app.post(
   "/api/bills",
   requireAuth,
@@ -512,7 +554,15 @@ app.post(
     const body = req.body;
     const { subtotal, gstAmount, total } = computeBillTotals(body);
     const invoiceNumber = await nextInvoiceNumber(req.ownerId, body.date, body.type);
-    const bill = await Bill.create({ ...body, owner: req.ownerId, subtotal, gstAmount, total, invoiceNumber });
+    const reserved = await reserveSpareStock(req.ownerId, body.items);
+    let bill;
+    try {
+      bill = await Bill.create({ ...body, owner: req.ownerId, subtotal, gstAmount, total, invoiceNumber });
+    } catch (err) {
+      await restoreSpareStock(req.ownerId, reserved);
+      throw err;
+    }
+    if (reserved.length) emitUpdate("sparepart:updated", {});
     emitUpdate("bill:created", bill);
     res.status(201).json(bill);
   })
@@ -524,12 +574,28 @@ app.put(
   wrap(async (req, res) => {
     const body = req.body;
     const { subtotal, gstAmount, total } = computeBillTotals(body);
-    const bill = await Bill.findOneAndUpdate(
-      { _id: req.params.id, owner: req.ownerId },
-      { $set: { ...body, subtotal, gstAmount, total } },
-      { new: true }
-    );
-    if (!bill) return res.status(404).json({ message: "Bill not found." });
+
+    const old = await Bill.findOne({ _id: req.params.id, owner: req.ownerId });
+    if (!old) return res.status(404).json({ message: "Bill not found." });
+
+    // give the old quantities back, then take the new ones; undo if anything fails
+    const oldLines = sparePartLines(old.items);
+    await restoreSpareStock(req.ownerId, oldLines);
+    let reserved = [];
+    let bill;
+    try {
+      reserved = await reserveSpareStock(req.ownerId, body.items);
+      bill = await Bill.findOneAndUpdate(
+        { _id: req.params.id, owner: req.ownerId },
+        { $set: { ...body, subtotal, gstAmount, total } },
+        { new: true }
+      );
+    } catch (err) {
+      if (reserved.length) await restoreSpareStock(req.ownerId, reserved);
+      await reserveSpareStock(req.ownerId, old.items).catch(() => {});
+      throw err;
+    }
+    if (oldLines.length || reserved.length) emitUpdate("sparepart:updated", {});
     emitUpdate("bill:updated", bill);
     res.json(bill);
   })
@@ -541,6 +607,12 @@ app.delete(
   wrap(async (req, res) => {
     const bill = await Bill.findOneAndDelete({ _id: req.params.id, owner: req.ownerId });
     if (!bill) return res.status(404).json({ message: "Bill not found." });
+    // deleting a repair bill puts its spare parts back into stock
+    const lines = sparePartLines(bill.items);
+    if (lines.length) {
+      await restoreSpareStock(req.ownerId, lines);
+      emitUpdate("sparepart:updated", {});
+    }
     emitUpdate("bill:deleted", { id: bill._id });
     res.json({ message: "Bill deleted.", id: bill._id });
   })
